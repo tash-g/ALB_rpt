@@ -21,7 +21,8 @@ source("RPT_functions.R")
 
 # Define the packages
 packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "rptR", "gridExtra", "tidyr",
-              "momentuHMM", "sf", "ecmwfr", "lubridate", "terra", "raster", "marmap")
+              "momentuHMM", "sf", "ecmwfr", "lubridate", "terra", "raster", "marmap",
+              "proc", "ggridges")
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -81,8 +82,8 @@ my_gps %<>%
 my_gps %<>% rename(ID = ring) %>% relocate(ID, longitude, latitude)  %>% data.frame()
 
 gps_hmm <- prepData(my_gps,
-                   type = "LL", 
-                   coordNames = c("longitude", "latitude")) 
+                    type = "LL", 
+                    coordNames = c("longitude", "latitude")) 
 
 # Remove erroneous step lengths that can't be larger than 40 m
 hist(gps_hmm$step)
@@ -270,7 +271,7 @@ N = max(pnts_all$Latitude, na.rm = T)
 W = min(pnts_all$Longitude, na.rm = T)
 E = max(pnts_all$Longitude, na.rm = T)
 vars =  "sea_surface_temperature" #c("10m_u_component_of_wind", "10m_v_component_of_wind", 
-          #"sea_surface_temperature", "total_precipitation")
+#"sea_surface_temperature", "total_precipitation")
 
 # Set request parameters
 request <- list(
@@ -332,16 +333,16 @@ pnts_all$sst = NA
 
 # loop through the dates 
 system.time(
-for(i in 1:length(GPSdates)){
-  print(i)
-  
-  which.layer = which.min(abs(GPSdates[i] - time.index))
-  tmp = pnts_all[rounded == GPSdates[i],]
-  
-  SSTs = terra::extract(SST.vector[[which.layer]], data.frame(x = tmp$Longitude, y = tmp$Latitude))[,2]
-  
-  pnts_all[rounded == GPSdates[i],]$sst = SSTs
-}
+  for(i in 1:length(GPSdates)){
+    print(i)
+    
+    which.layer = which.min(abs(GPSdates[i] - time.index))
+    tmp = pnts_all[rounded == GPSdates[i],]
+    
+    SSTs = terra::extract(SST.vector[[which.layer]], data.frame(x = tmp$Longitude, y = tmp$Latitude))[,2]
+    
+    pnts_all[rounded == GPSdates[i],]$sst = SSTs
+  }
 )
 
 
@@ -401,9 +402,68 @@ pnts_all %<>%
          bathy_scaled = scale(bathy))
 
 # ______________________________ ####
+
+
+# Plot habitat use --------------------------------------------------------
+
+### SST ----------
+
+subset_ids <- sample(unique(pnts_all$ID), 30)
+pnts_subset <- pnts_all %>%
+  filter(ID %in% subset_ids) %>%
+  filter(used == 1) %>%
+  group_by(ID) %>%
+  mutate(mean_sst = mean(sst)) %>%
+  ungroup() %>%
+  mutate(ID = factor(ID, levels = unique(ID[order(mean_sst)]))) 
+
+ggplot(pnts_subset, 
+       aes(x = sst, y = ID)) +
+  geom_density_ridges_gradient(aes(fill = after_stat(x)), scale = 2) +
+  scale_fill_gradientn(
+    colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"),
+    name = "SST (°C)" ) +
+  labs(x = "Sea surface temperature (°C)") +
+  theme_bw() +
+  theme(legend.justification = "top",
+        axis.text.y = element_blank())
+
+### Bathymetry ----------
+
+subset_ids <- sample(unique(pnts_all$ID), 30)
+
+pnts_subset <- pnts_all %>%
+  filter(ID %in% subset_ids) %>%
+  filter(used == 1) %>%
+  group_by(ID) %>%
+  mutate(mean_bathy = mean(bathy)) %>%
+  ungroup() %>%
+  mutate(ID = factor(ID, levels = unique(ID[order(mean_bathy)]))) 
+
+ggplot(pnts_subset, 
+       aes(x = bathy, y = ID)) +
+  geom_density_ridges_gradient(aes(fill = after_stat(x)), scale = 2) +
+  scale_fill_gradientn(
+    colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"),
+    name = "Bathymetry (m)" ) +
+  labs(x = "Sea floor depth (m below sea level)") +
+  theme_bw() +
+  theme(legend.justification = "top",
+        axis.text.y = element_blank())
+
+
+
 # Model habitat use -------------------------------------------------------
 
 ### Prepare data for models ----------------------------------------------------------
+
+# Remove birds with only a couple of points
+pnts_all %<>% 
+  group_by(ID, season) %>%
+  mutate(n_recs = n(),
+         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
+  filter(flag == "fine") %>%
+  select(-flag)
 
 # Merge metadata
 pnts_all <- merge(pnts_all, my_trip_meta %>% rename(ID = ring),
@@ -416,8 +476,8 @@ pnts_all %<>%
 # Get season
 pnts_all %<>%
   mutate(season = ifelse(as.numeric(format(as.Date(datetime), "%m")) < 9,
-                                 as.numeric(format(as.Date(datetime), "%Y")),
-                                 as.numeric(format(as.Date(datetime), "%Y")) + 1 ),)
+                         as.numeric(format(as.Date(datetime), "%Y")),
+                         as.numeric(format(as.Date(datetime), "%Y")) + 1 ),)
 
 # Remove NAs
 pnts_all %<>% filter(!is.na(sst) & !is.na(used) & !is.na(bathy))
@@ -453,30 +513,29 @@ pnts_all %<>% filter(!is.na(sst) & !is.na(used) & !is.na(bathy))
 
 ### Compute models ----------------------------------------------------------
 
-library(lme4) 
-library(pROC) 
-
 # Fit initial SST model - ~17 minutes
 system.time( sst_mod <- glmer(
   used ~ sst + phase + (1|boutID) +
     (1 + sst|ID) + (1|season) + (1 + sst|ID:season),
   data = pnts_all,
   family = binomial(link = "logit")
- )
+)
 )
 
 
 # Fit initial bathymetry model 
 system.time( bathy_mod <- glmer(
-  used ~ bathy + phase + (1|boutID) +
-    (1 + bathy|ID) + (1|season) + (1 + bathy|ID:season),
+  used ~ bathy_scaled + (1|boutID) +
+    (1 + bathy_scaled|ID) + (1|season) + (1 + bathy_scaled|ID:season),
   data = pnts_all,
-  family = binomial(link = "logit")
-)
+  family = binomial(link = "logit"))
 )
 
+relgrad <- with(bathy_mod@optinfo$derivs, solve(Hessian, gradient))
+max(abs(relgrad))
+
 summary(bathy_mod)
-save(bathy_mod, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_bathy_glmm.RData"))
+save(bathy_mod, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_bathy_scaled_glmm.RData"))
 
 
 
@@ -485,26 +544,28 @@ save(bathy_mod, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_bathy_
 
 fitted_mod <- sst_mod # set to focal model
 habitat_var <- "sst" # set to habitat variable
- 
+
+load(paste0("Data_RPT/", my_species, "_", colony_exp, "_", habitat_var, "_glmm.RData"))
+
 ### Model fit metrics: AUC, sensitivity, specificity ----
 
-# model_data <- model.frame(fitted_mod)
-# response <- model_data$used
+model_data <- model.frame(fitted_mod)
+response <- model_data$used
 
 predicted_probs <- predict(fitted_mod, type = "response")
-roc_obj <- roc(pnts_all$used, predicted_probs)
+roc_obj <- roc(response, predicted_probs)
 auc_value <- auc(roc_obj)
 cat("AUC:", auc_value, "\n") # closer to 0.5 means basically random guess; want something close to 1
 
 ### Extract & plot random effects ----
 random_effects <- ranef(fitted_mod, condVar = TRUE)
-ind_slopes <- random_effects$ID[habitat_var]  
-ind_intercepts <- random_effects$ID["(Intercept)"]        
+ind_slopes <- random_effects$`ID:season`[habitat_var]  
+ind_intercepts <- random_effects$`ID:season`["(Intercept)"]        
 
 ## Plot random effects
 rnd_eff.df <- data.frame(cbind(ind_intercepts, ind_slopes))
 colnames(rnd_eff.df) <- c("intercept", "slope")
-rnd_eff.df$ID = rownames(random_effects$ID)
+rnd_eff.df$ID = rownames(random_effects$`ID:season`)
 
 habitat_range <- seq(min(pnts_all[[habitat_var]], na.rm = TRUE), 
                      max(pnts_all[[habitat_var]], na.rm = TRUE), 
@@ -531,10 +592,10 @@ predictions.global$probability <- 1 / (1 + exp(-predictions.global$logit))
 ggplot() +
   geom_line(data = predictions, aes(x = habitat_val, y = probability, colour = ID), alpha = 0.6) +
   geom_line(data = predictions.global, aes(x = habitat_val, y = probability), col = "black",
-  linetype = "dashed", linewidth = 1) +
+            linetype = "dashed", linewidth = 1) +
   theme_bw() +
   theme(legend.position = "none") +
-  labs(x = "Habitat value",
+  labs(x = "Sea surface temperature (°C)", 
        y = "Probability of use")
 
 
@@ -549,22 +610,26 @@ var_resid = deviance/df_resid
 # Random effect variance
 var_comp <- as.data.frame(VarCorr(fitted_mod))
 var_ID_season <- var_comp$vcov[var_comp$grp == "ID:season" & var_comp$var1 == "(Intercept)" & 
-                                is.na(var_comp$var2)]
-var_ID_season_SST <- var_comp$vcov[var_comp$grp == "ID:season" & var_comp$var1 == "sst" &
-                                     is.na(var_comp$var2)]
+                                 is.na(var_comp$var2)]
+var_ID_season_habitat <- var_comp$vcov[var_comp$grp == "ID:season" & var_comp$var1 == habitat_var &
+                                         is.na(var_comp$var2)]
 
 var_ID <- var_comp$vcov[var_comp$grp == "ID" & var_comp$var1 == "(Intercept)" &
                           is.na(var_comp$var2)]
-var_ID_sst <- var_comp$vcov[var_comp$grp == "ID" & var_comp$var1 == "sst" &
-                             is.na(var_comp$var2)]
+var_ID_habitat <- var_comp$vcov[var_comp$grp == "ID" & var_comp$var1 == habitat_var &
+                                  is.na(var_comp$var2)]
 var_boutID <- var_comp$vcov[var_comp$grp == "boutID"]
 
 # Total variance
-var_total = var_ID_season + var_ID_season_SST + var_ID + var_ID_sst + var_boutID + var_resid
+var_total = var_ID_season + var_ID_season_habitat + var_ID + var_ID_habitat + var_boutID + var_resid
 
 # Repeatabiltiy estimats
-rep_within = var_ID_season_SST / var_total
-rep_between = var_ID_sst / var_total
+rep_within = var_ID_season_habitat / var_total
+rep_between = var_ID_habitat / var_total
+
+
+
+
 
 
 
