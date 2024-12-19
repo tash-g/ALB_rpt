@@ -16,13 +16,12 @@
 # Load functions, packages, & data ---------------------------------------------
 
 # Functions for GPS processing and plotting
-source("ALB_FOR_functions.R")
 source("RPT_functions.R")
 
 # Define the packages
 packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "rptR", "gridExtra", "tidyr",
               "momentuHMM", "sf", "ecmwfr", "lubridate", "terra", "raster", "marmap",
-              "proc", "ggridges")
+              "pROC", "ggridges")
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -47,7 +46,7 @@ select <- dplyr::select
 
 ## Set parameters
 colony <- "bi" # cro bi ker
-my_species <- "waal" # waal bba
+my_species <- "bba" # waal bba
 
 colony_exp <- ifelse(colony == "ker", "kerguelen",
                      ifelse(colony == "cro", "crozet",
@@ -55,12 +54,13 @@ colony_exp <- ifelse(colony == "ker", "kerguelen",
 
 
 ## Load the GPS data
-gps_files <- list.files("Data_RPT/", pattern = paste0(my_species, "_", colony_exp, "_gps"))
+gps_files <- list.files("Data_inputs/", pattern = paste0(my_species, "_", colony_exp, "_gps"))
 my_file <- gps_files[grepl("labelled", gps_files)]
 
-my_gps <- loadRData(paste0("Data_RPT/", my_file)) 
+my_gps <- loadRData(paste0("Data_inputs/", my_file)) 
 
-my_trip_meta <- my_gps %>% select(c(ring, datetime, distances, phase, boutID))
+my_trip_meta <- my_gps %>% select(c(ring, season, datetime, distances, phase, boutID)) %>%
+  group_by(ring, season) %>% mutate(max_range = max(distances, na.rm = T)) %>% ungroup()
 
 my_gps %<>%
   mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
@@ -164,13 +164,13 @@ hmm_states <- hmm_data_out %>% select(c(ID, datetime, step, angle, State)) %>%
 my_gps <- merge(my_gps, hmm_states, by = c("ring", "datetime"), all.x =T)
 my_gps %<>% filter(!is.na(step) & !is.na(angle))
 
-save(my_gps, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_labelledHMM.RData"))
+save(my_gps, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_labelledHMM.RData"))
 
 
 # ______________________________ ####
-# Compute 'used' and 'unused' habitat -------------------------------------
+# AVAILABLE HABITAT -------------------------------------
 
-load(paste0("Data_RPT/", my_species, "_", colony_exp, "_labelledHMM.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_labelledHMM.RData"))
 
 # Use maximum foraging range within each season
 
@@ -183,11 +183,11 @@ my_gps %<>%
 ## Get used points
 used_pnts <- st_as_sf(my_gps %>% filter(State == "Search"), coords = c ("longitude", "latitude"), crs = 4326) 
 
-# Create random available points for each used point
+# * Create random available points for each used point ------
 set.seed(123) 
 
 # Vectorized random sampling function
-sample_points_vectorized <- function(geometry, max_range, n = 2) {
+sample_points <- function(geometry, max_range, n) {
   buffer <- st_buffer(geometry, dist = max_range[1])
   st_sample(buffer, size = n, type = "random")
 }
@@ -195,11 +195,11 @@ sample_points_vectorized <- function(geometry, max_range, n = 2) {
 ## Convert used_pnts to match with buffer (in metres)
 used_pnts <- st_transform(used_pnts, crs = 3395) 
 
-## Run the sampling function 
+## Run the sampling function
 system.time(
   avail_pnts <- used_pnts %>%
     group_by(ring, season) %>%
-    mutate(random_points = purrr::map(geometry, ~sample_points_vectorized(.x, max_range))) %>%
+    mutate(random_points = purrr::map(geometry, ~sample_points(.x, max_range, 2))) %>%
     unnest(random_points)
 )
 
@@ -209,6 +209,7 @@ avail_pnts <- st_transform(avail_pnts, crs = 4326)
 
 avail_pnts$random_points <- st_set_crs(avail_pnts$random_points, 3395)
 avail_pnts$random_points <- st_transform(avail_pnts$random_points, crs = 4326)
+
 
 ### Check it worked
 coords <- st_coordinates(avail_pnts$random_points)
@@ -224,7 +225,7 @@ plot(avail_pnts$Latitude, avail_pnts$Longitude)
 points(used_pnts$Latitude, used_pnts$Longitude, col = "red")
 
 
-### Make a final dataframe for further processing -----
+### Make a final dataframe for further processing ----------
 pnts_used <- data.frame(used_pnts[,c("datetime", "Latitude", "Longitude", "ring")])
 pnts_used %<>% select(-geometry) %>% mutate(presence = "used")
 
@@ -233,28 +234,113 @@ pnts_avail %<>% select(-geometry) %>% mutate(presence = "avail")
 
 pnts_all <- rbind(pnts_used, pnts_avail)
 
-save(pnts_all, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_habitat_avail.RData"))
-
-# FOR LATER: STRATIFY -----------------------------------------------------
-
-# # Example: Remove points on land
-# land_mask <- raster("path_to_land_mask.tif") # Land = 1, Water = 0
-# combined_data$on_land <- extract(land_mask, st_coordinates(combined_data))
-# 
-# # Filter out points on land
-# combined_data <- combined_data %>% filter(on_land == 0)
+save(pnts_all, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
 
 
-### Validate used vs unused point selection (see Trevail appendix) ----------
+# * Ensure points don't overlap land ----------------------------------------
+
+library(rnaturalearth)
+
+# Get spatial extent of GPS points
+S = min(pnts_all$Latitude, na.rm = T)
+N = max(pnts_all$Latitude, na.rm = T)
+W = min(pnts_all$Longitude, na.rm = T)
+E = max(pnts_all$Longitude, na.rm = T)
+
+
+### Make a land raster -------
+extent <- ext(W, E, S, N)
+resolution <- 0.1 
+raster_extent <- rast(extent, res = resolution, crs = "EPSG:4326")
+
+## Download land polygons from rnaturalearth
+land <- ne_countries(scale = "medium", returnclass = "sf")
+
+## Rasterize the land polygons
+land_raster <- rasterize(vect(land), raster_extent, field = 1, background = 0)
+
+## Plot the land mask
+#plot(land_raster, col = c("lightblue", "forestgreen"), main = "Land Mask")
+
+
+#### Filter points based on land raster -----
+
+## Convert to SpatVector
+points_vect <- vect(pnts_all, geom = c("Longitude", "Latitude"), crs = crs(raster_extent))
+
+## Extract raster values at the points' locations
+pnts_all$on_land <- extract(land_raster, points_vect)[,2] == 1
+
+
+
+#### Resample filtered points ------------------------------------------------
+
+pnts_all <- merge(pnts_all, my_trip_meta, by = c("ring", "datetime"))
+
+pnts_on_land <- st_as_sf(pnts_all %>% filter(on_land == "TRUE"), 
+                         coords = c ("Longitude", "Latitude"), crs = 4326) 
+pnts_on_land <- st_transform(pnts_on_land, crs = 3395) 
+
+## Run the sampling function
+system.time(
+  pnts_on_land.resample <- pnts_on_land %>%
+    group_by(ring, season) %>%
+    mutate(random_points = purrr::map(geometry, ~sample_points(.x, max_range, 10))) %>% # increase sampling to ensure gaps filled
+    unnest(random_points)
+)
+
+## Back-transform the coordinates
+pnts_on_land.resample <- st_transform(pnts_on_land.resample, crs = 4326)
+pnts_on_land.resample$random_points <- st_set_crs(pnts_on_land.resample$random_points, 3395)
+pnts_on_land.resample$random_points <- st_transform(pnts_on_land.resample$random_points, crs = 4326)
+
+## Convert to dataframe
+coords <- st_coordinates(pnts_on_land.resample$random_points)
+pnts_on_land.resample$Longitude <- coords[, "X"]
+pnts_on_land.resample$Latitude <- coords[, "Y"]
+
+resample.df <- data.frame(pnts_on_land.resample[,c("datetime", "Latitude", "Longitude", "ring")])
+resample.df %<>% select(-geometry) %>% mutate(presence = "avail")
+
+## Remove any remaining land points
+
+## Convert to SpatVector
+resample.df_vect <- vect(resample.df, geom = c("Longitude", "Latitude"), crs = crs(raster_extent))
+
+## Extract raster values at the points' locations
+resample.df$on_land <- extract(land_raster, resample.df_vect)[,2] == 1
+resample.df %<>% filter(on_land == FALSE)
+
+##### Bind back into the original DF -----
+
+pnts_all %<>% select(-c(season, distances, phase, boutID, max_range)) %>%
+  filter(on_land == FALSE)
+
+pnts_all <- rbind(pnts_all, resample.df) %>%
+  arrange(ring, datetime)
+
+## Ensure data are balanced
+pnts_all %<>%
+  group_by(ring, datetime) %>%
+  mutate(nrows = n()) %>%
+  filter(nrows >= 3) %>%
+  arrange(ring, datetime, desc(presence)) %>%
+  slice_head(n = 3) %>%
+  ungroup() %>%
+  select(-c(nrows, on_land))
+
+save(pnts_all, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
+
+# * Validate used vs unused point selection (see Trevail appendix) ----------
 
 
 
 # ______________________________ ####
-# Integrate environmental data --------------------------------------------
+# ENVIRONMENT --------------------------------------------
 
-load(paste0("Data_RPT/", my_species, "_", colony_exp, "_habitat_avail.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
 
-## SST -----
+## * SST -----
 
 ### Download file from ERA5 -----
 
@@ -298,7 +384,7 @@ file <- wf_request(user = "8942e3d3-fd42-4be5-a07d-6894205633ce",
 
 #### Extract variables ------------
 
-load(paste0("Data_RPT/", my_species, "_", colony_exp, "_habitat_avail.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
 grib_data <- rast(paste0("Data_RPT/", my_species, "_", colony_exp, "_sst.grib"))
 
 # split into a separate raster set for U and V wind components
@@ -346,7 +432,7 @@ system.time(
 )
 
 
-## BATHMETRY ---------
+## * BATHMETRY ---------
 
 # Set spatial extent
 S = min(pnts_all$Latitude, na.rm = T)
@@ -359,7 +445,7 @@ bathy <- getNOAA.bathy(lon1 = W, lon2 = E, lat1 = S, lat2 = N, resolution = 4)
 ## Check how it looks
 plot(bathy, image = TRUE)
 scaleBathy(bathy, deg = 2, x = "bottomleft", inset = 5)
-
+points(pnts_all$Longitude, pnts_all$Latitude, col = "red")
 
 # Convert bathy matrix to dataframe
 lat <- as.numeric(colnames(bathy))  
@@ -378,10 +464,13 @@ pnts_all$bathy <- raster::extract(bathy.raster, pnts_all[, c("Longitude", "Latit
 
 save(pnts_all, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
 
+# ______________________________ ####
 
-### Process data & standardise environment -------
+# MODELLING ---------------------------------------------------------------
 
-load(paste0("Data_RPT/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
+# * Process data & standardise environment -------
+
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
 
 #source("C:/Users/ngillies/OneDrive - The University of Liverpool/Liverpool postdoc/GPS processing/wind_functions.R")
 
@@ -400,9 +489,6 @@ pnts_all %<>%
   mutate(sst = sst - 273.15,
          sst_scaled = scale(sst),
          bathy_scaled = scale(bathy))
-
-# ______________________________ ####
-
 
 # Plot habitat use --------------------------------------------------------
 
@@ -522,6 +608,8 @@ system.time( sst_mod <- glmer(
 )
 )
 
+save(bathy_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_glmm.RData"))
+
 
 # Fit initial bathymetry model 
 system.time( bathy_mod <- glmer(
@@ -535,17 +623,16 @@ relgrad <- with(bathy_mod@optinfo$derivs, solve(Hessian, gradient))
 max(abs(relgrad))
 
 summary(bathy_mod)
-save(bathy_mod, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_bathy_scaled_glmm.RData"))
+save(bathy_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_bathy_scaled_glmm.RData"))
 
 
 
 
 # Interrogate results -----------------------------------------------------
 
-fitted_mod <- sst_mod # set to focal model
-habitat_var <- "sst" # set to habitat variable
-
-load(paste0("Data_RPT/", my_species, "_", colony_exp, "_", habitat_var, "_glmm.RData"))
+habitat_var <- "bathy_scaled" # set to habitat variable
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_", habitat_var, "_glmm.RData"))
+fitted_mod <- get(paste0(habitat_var, "_mod")) # set to focal model
 
 ### Model fit metrics: AUC, sensitivity, specificity ----
 
@@ -626,7 +713,7 @@ var_total = var_ID_season + var_ID_season_habitat + var_ID + var_ID_habitat + va
 # Repeatabiltiy estimats
 rep_within = var_ID_season_habitat / var_total
 rep_between = var_ID_habitat / var_total
-
+rep_boutID = var_boutID / var_total
 
 
 
