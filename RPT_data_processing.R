@@ -2,7 +2,8 @@
 ##
 ## Script name: individual_repeatability_processing
 ##
-## Purpose of script: Process GLS & GPS data for individual repeatability estimates
+## Purpose of script: Process GLS & GPS data for individual repeatability estimates.
+## NOTE This script interfaces with the main ALB project.
 ##
 ## Author: Dr. Natasha Gillies
 ##
@@ -16,8 +17,8 @@
 # Load functions, packages, & data ---------------------------------------------
 
 # Functions for GPS processing and plotting
-source("ALB_FOR_functions.R")
-source("ALB_data_processing_functions.R")
+#source("ALB_FOR_functions.R")
+#source("ALB_data_processing_functions.R")
 source("RPT_functions.R")
 
 # Define the packages
@@ -58,6 +59,9 @@ colony_exp <- ifelse(my_colony == "ker", "kerguelen",
 
 # Load the tracking data -------------------------------------------------------
 
+# Change directory
+setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_foraging_proj")
+
 load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gps_labelled.RData"))
 
 gps_labelled.df %<>% 
@@ -96,6 +100,9 @@ demoB <- all_demo %>% select(-c(bird1_sex, bird1_birthYr)) %>%
 my_demo <- rbind(demoA, demoB)
 my_demo %<>% group_by(ring, season) %>% tidyr::fill(everything(), .direction = 'updown') %>% distinct()
 
+
+# Change directory back
+setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
 
 # Manual breeding dates ------------------------------------------------------
 
@@ -144,7 +151,7 @@ brood_time = ifelse(my_species == "bba", 38, 48)
 gps_labelled.df <- cut_to_breeding(gps_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
 #gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
 
-save(gps_labelled.df, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_gps_labelled_subset.RData"))
+save(gps_labelled.df, file = paste0("Data_inputs/", my_species, "_", colony_exp, "_gps_labelled_subset.RData"))
 #save(gls_labelled.df, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_gls_labelled_subset.RData"))
 
 # +++++++++++++++++++++++++++++ ####

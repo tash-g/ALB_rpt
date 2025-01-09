@@ -21,7 +21,7 @@ source("RPT_functions.R")
 # Define the packages
 packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "rptR", "gridExtra", "tidyr",
               "momentuHMM", "sf", "ecmwfr", "lubridate", "terra", "raster", "marmap",
-              "pROC", "ggridges")
+              "pROC", "ggridges", "rnaturalearth") 
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -41,11 +41,10 @@ select <- dplyr::select
 
 
 
-
 # Load the data -----------------------------------------------------------
 
-## Set parameters
-colony <- "bi" # cro bi ker
+# Set parameters
+colony <- "ker" # cro bi ker
 my_species <- "bba" # waal bba
 
 colony_exp <- ifelse(colony == "ker", "kerguelen",
@@ -53,37 +52,62 @@ colony_exp <- ifelse(colony == "ker", "kerguelen",
                             "birdis"))
 
 
-## Load the GPS data
+# Load the GPS data
 gps_files <- list.files("Data_inputs/", pattern = paste0(my_species, "_", colony_exp, "_gps"))
 my_file <- gps_files[grepl("labelled", gps_files)]
 
 my_gps <- loadRData(paste0("Data_inputs/", my_file)) 
 
-my_trip_meta <- my_gps %>% select(c(ring, season, datetime, distances, phase, boutID)) %>%
-  group_by(ring, season) %>% mutate(max_range = max(distances, na.rm = T)) %>% ungroup()
+my_trip_meta <- my_gps %>% select(c(ring, season, datetime, dist_col, phase, boutID)) %>%
+  group_by(ring, season) %>% mutate(max_range = max(dist_col, na.rm = T)) %>% ungroup()
 
 my_gps %<>%
-  mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
-  mutate(across(c(latitude, longitude), as.numeric)) %>% filter(!is.na(longitude) & !is.na(latitude)) %>%
-  arrange(ring,datetime) %>%
-  ungroup() %>%
-  select(c(ring, season, datetime, longitude, latitude, dist_next, distances))
+  mutate(ID = paste0(ring, "_", boutID),
+         season = ifelse(as.numeric(format(as.Date(datetime), "%m")) < 9,
+                       as.numeric(format(as.Date(datetime), "%Y")),
+                       as.numeric(format(as.Date(datetime), "%Y")) + 1 ))
 
-# bbal_ker <- read.csv("Data_inputs/bbal_cr_tracks_15interp_env.csv")
-# bbal_ker %<>% select(-c(X, rowID, tel_id, track_tel_id, use_avail)) %>%
-#   mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S"),
-#          BirdID = as.character(BirdID))
+## Calculate distance from colony
+# col_lon = median(my_gps$longitude[my_gps$loc == "colony"], na.rm = T) # -49.6833
+# col_lat = median(my_gps$latitude[my_gps$loc == "colony"], na.rm = T) # 70.2333
+# col_coords <- c(col_lon, col_lat)
+# 
+# my_gps$dist_col <- apply(my_gps, 1, function(row) {
+#   point_coords <- c(as.numeric(row["longitude"]), as.numeric(row["latitude"]))
+#   geosphere::distHaversine(point_coords, col_coords)
+# })
+
 
 # ______________________________ ####
 # Isolate foraging behaviour using HMMs-----------------------------------------
 
 ### Prepare dataset ------
 
-my_gps %<>% rename(ID = ring) %>% relocate(ID, longitude, latitude)  %>% data.frame()
+my_gps %<>% 
+  # Check formatting
+  mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
+  mutate(across(c(latitude, longitude), as.numeric)) %>% 
+  filter(!is.na(longitude) & !is.na(latitude)) %>%
+  # Filter for trips only
+  mutate(ID = paste0(ring, "_", boutID)) %>% 
+  filter(loc == "trip") %>%
+  group_by(ID) %>%
+  mutate(n_recs = n()) %>%
+  # Remove short trips
+  filter(n_recs > 3) %>% # loses 28 trips 
+  select(-n_recs) %>%
+  ungroup() 
+ 
+my_gps.hmm <- my_gps %>%
+  select(ID, datetime, longitude, latitude) %>%
+  arrange(ID, datetime) %>%
+  relocate(ID, longitude, latitude) %>% 
+  data.frame() 
 
-gps_hmm <- prepData(my_gps,
+gps_hmm <- prepData(my_gps.hmm,
                     type = "LL", 
                     coordNames = c("longitude", "latitude")) 
+
 
 # Remove erroneous step lengths that can't be larger than 40 m
 hist(gps_hmm$step)
@@ -95,7 +119,9 @@ gps_hmm$step[gps_hmm$step == 0 | is.na(gps_hmm$step)] <- runif(sum(gps_hmm$step 
 gps_hmm <- na.omit(gps_hmm)
 gps_hmm %<>% filter(!is.na(angle) & !is.na(step))
 
-save(gps_hmm, file = paste0("Data_rpt/", my_species, "_", colony_exp, "_HMMdata.RData"))
+save(gps_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+
+
 
 ### Fit the HMM  ---------
 
@@ -111,7 +137,7 @@ location_0 <- c(0.00302, 0.00343, 0.0291)
 concentration_0 <- c(50.79, 1.27, 44.02)
 anglePar0 <- c(location_0, concentration_0)
 
-load(paste0("Data_rpt/", my_species, "_", colony_exp, "_HMMdata.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
 
 stateNames <- c("travel","search", "rest")
 
@@ -124,16 +150,16 @@ my_hmm <- fitHMM(
   stateNames = stateNames
 )
 
-save(my_hmm, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_HMM.RData"))
+save(my_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.RData"))
 
-# Plot pseudo-residuals
+## Plot pseudo-residuals
 plotPR(hmm_bbal)
 
 
 ### Assign behaviours ---------
 
-load(paste0("Data_rpt/", my_species, "_", colony_exp, "_HMMdata.RData"))
-load(paste0("Data_RPT/", my_species, "_", colony_exp, "_HMM.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.RData"))
 
 hmm_data_out <- my_hmm$data
 hmm_data_out$State <- viterbi(my_hmm)
@@ -158,13 +184,14 @@ hmm_data_out$State[hmm_data_out$State == 3] <- "Rest"
 #   collect()
 
 # Merge with OG data
-hmm_states <- hmm_data_out %>% select(c(ID, datetime, step, angle, State)) %>%
-  rename(ring = ID)
+hmm_states <- hmm_data_out %>% select(c(ID, datetime, step, angle, State))
 
-my_gps <- merge(my_gps, hmm_states, by = c("ring", "datetime"), all.x =T)
+my_gps %<>% select(ring, season, datetime, longitude, latitude, dist_col, boutID, ID)
+my_gps <- merge(my_gps, hmm_states, by = c("ID", "datetime"), all.x =T)
 my_gps %<>% filter(!is.na(step) & !is.na(angle))
 
 save(my_gps, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_labelledHMM.RData"))
+
 
 
 # ______________________________ ####
@@ -177,7 +204,7 @@ load(paste0("Data_outputs/", my_species, "_", colony_exp, "_labelledHMM.RData"))
 ## Calc max range
 my_gps %<>%
   group_by(season, ring) %>%
-  mutate(max_range = max(distances, na.rm = T))%>%
+  mutate(max_range = max(dist_col, na.rm = T)) %>%
   ungroup()
 
 ## Get used points
@@ -185,12 +212,6 @@ used_pnts <- st_as_sf(my_gps %>% filter(State == "Search"), coords = c ("longitu
 
 # * Create random available points for each used point ------
 set.seed(123) 
-
-# Vectorized random sampling function
-sample_points <- function(geometry, max_range, n) {
-  buffer <- st_buffer(geometry, dist = max_range[1])
-  st_sample(buffer, size = n, type = "random")
-}
 
 ## Convert used_pnts to match with buffer (in metres)
 used_pnts <- st_transform(used_pnts, crs = 3395) 
@@ -210,8 +231,7 @@ avail_pnts <- st_transform(avail_pnts, crs = 4326)
 avail_pnts$random_points <- st_set_crs(avail_pnts$random_points, 3395)
 avail_pnts$random_points <- st_transform(avail_pnts$random_points, crs = 4326)
 
-
-### Check it worked
+## Check it worked
 coords <- st_coordinates(avail_pnts$random_points)
 avail_pnts$Longitude <- coords[, "X"]
 avail_pnts$Latitude <- coords[, "Y"]
@@ -239,8 +259,6 @@ save(pnts_all, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_hab
 
 # * Ensure points don't overlap land ----------------------------------------
 
-library(rnaturalearth)
-
 # Get spatial extent of GPS points
 S = min(pnts_all$Latitude, na.rm = T)
 N = max(pnts_all$Latitude, na.rm = T)
@@ -265,7 +283,7 @@ land_raster <- rasterize(vect(land), raster_extent, field = 1, background = 0)
 
 #### Filter points based on land raster -----
 
-## Convert to SpatVector
+# Convert to SpatVector
 points_vect <- vect(pnts_all, geom = c("Longitude", "Latitude"), crs = crs(raster_extent))
 
 ## Extract raster values at the points' locations
@@ -313,7 +331,7 @@ resample.df %<>% filter(on_land == FALSE)
 
 ##### Bind back into the original DF -----
 
-pnts_all %<>% select(-c(season, distances, phase, boutID, max_range)) %>%
+pnts_all %<>% select(-c(season, dist_col, phase, boutID, max_range)) %>%
   filter(on_land == FALSE)
 
 pnts_all <- rbind(pnts_all, resample.df) %>%
@@ -329,6 +347,9 @@ pnts_all %<>%
   ungroup() %>%
   select(-c(nrows, on_land))
 
+## Put metadata back in
+pnts_all <- merge(pnts_all, my_trip_meta, by = c("ring", "datetime"), all.x = T)
+
 save(pnts_all, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
 
 # * Validate used vs unused point selection (see Trevail appendix) ----------
@@ -336,7 +357,7 @@ save(pnts_all, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_hab
 
 
 # ______________________________ ####
-# ENVIRONMENT --------------------------------------------
+# ENVIRONMENT DOWNLOAD --------------------------------------------
 
 load(paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
 
@@ -382,10 +403,66 @@ file <- wf_request(user = "8942e3d3-fd42-4be5-a07d-6894205633ce",
                    path = "Data_environmental",
                    verbose = TRUE)
 
-#### Extract variables ------------
+
+#### Visualise the data ------------------------------------------------------
 
 load(paste0("Data_outputs/", my_species, "_", colony_exp, "_habitat_avail.RData"))
-grib_data <- rast(paste0("Data_RPT/", my_species, "_", colony_exp, "_sst.grib"))
+grib_data <- rast(paste0("Data_env/", my_species, "_", colony_exp, "_sst.grib"))
+
+time_info <- time(grib_data)
+years <- format(as.Date(time_info), "%Y")
+months <- format(as.Date(time_info), "%m")
+
+# Aggregate data by year 
+annual_sst <- tapp(grib_data, index = years, fun = mean, na.rm = TRUE)
+
+## Convert raster to data frame for ggplot
+annual_sst.df <- as.data.frame(annual_sst, xy = TRUE)
+colnames(annual_sst.df) <- c("Longitude", "Latitude", paste0("Year_", unique(years)))
+
+## Reshape data for ggplot (annual_sst.df format)
+annual_sst.long <- annual_sst.df %>%
+  pivot_longer(cols = starts_with("Year_"), names_to = "year", values_to = "SST") %>%
+  mutate(year = sub("Year_", "", year),
+         SST = SST - 273.15)
+
+## Make the plot
+ggplot(data = annual_sst.long, aes(x = Longitude, y = Latitude, fill = SST)) +
+  geom_tile() +
+  facet_wrap(~year) +
+  scale_fill_viridis_c(name = "SST °C") +
+  labs(title = "Annual Mean Sea Surface Temperature") +
+  theme_bw() +
+  theme(legend.justification = "top")
+
+
+# Aggregate data by month (mean for each month)
+monthly_sst <- tapp(grib_data, index = months, fun = mean, na.rm = TRUE)
+
+## Convert raster to data frame for ggplot
+monthly_sst.df <- as.data.frame(monthly_sst, xy = TRUE)
+colnames(monthly_sst.df) <- c("Longitude", "Latitude", paste0("Month_", unique(months)))
+
+## Reshape data for ggplot (long format)
+monthly_sst.long <- monthly_sst.df %>%
+  pivot_longer(cols = starts_with("Month_"), names_to = "month", values_to = "SST") %>%
+  mutate(month = sub("Month_", "", month),
+         SST = SST - 273.15)
+
+## Reorder months
+monthly_sst.long$month <- factor(monthly_sst.long$month, levels = c("12", "01"))
+
+## Make the plot
+ggplot(data = monthly_sst.long, aes(x = Longitude, y = Latitude, fill = SST)) +
+  geom_tile() +
+  facet_wrap(~month, labeller = as_labeller(c("01" = "January", "12" = "December"))) +
+  scale_fill_viridis_c(name = "SST °C") +
+  labs(title = "Monthly Mean Sea Surface Temperature") +
+  theme_bw() +
+  theme(legend.justification = "top")
+
+
+#### Extract SST ------------
 
 # split into a separate raster set for U and V wind components
 #Us = which(grepl("u wind", names(grib_data)))
@@ -410,29 +487,46 @@ formatted_datetime <- format(pnts_all$datetime, "%Y-%m-%d %H:%M:%S")
 datetime <- ymd_hms(formatted_datetime)
 rounded <- round_date(datetime, "hour")
 
-### OLLIE CODE
+## Combine the points and their timestamps into a single data.frame
+pnts_all$rounded_time <- rounded
+pnts_all$index <- seq_len(nrow(pnts_all))  # Add a unique index for reassignment later
 
-# each timestamp in turn.
-GPSdates = unique(rounded) # find the raster dates
-# create U and V variables for the wind data
-pnts_all$sst = NA
+## Pre-compute the closest layer index for each unique GPS date
+GPSdates = unique(rounded) 
+layer_indices <- sapply(GPSdates, function(gps_date) which.min(abs(gps_date - time.index)))
 
-# loop through the dates 
+## Create a lookup table for layer indices
+layer_lookup <- data.frame(rounded_time = GPSdates, layer_index = layer_indices)
+
+## Join layer indices back to points
+pnts_with_layers <- merge(pnts_all, layer_lookup, by = "rounded_time")
+
+# Extract all variables in one pass for each layer
 system.time(
-  for(i in 1:length(GPSdates)){
-    print(i)
+  results <- pbapply::pblapply(unique(pnts_with_layers$layer_index), function(layer_idx) {
+    points <- pnts_with_layers[pnts_with_layers$layer_index == layer_idx, ]
+    coords <- data.frame(x = points$Longitude, y = points$Latitude)
     
-    which.layer = which.min(abs(GPSdates[i] - time.index))
-    tmp = pnts_all[rounded == GPSdates[i],]
+    SST <- terra::extract(SST.vector[[layer_idx]], coords)[, 2]
     
-    SSTs = terra::extract(SST.vector[[which.layer]], data.frame(x = tmp$Longitude, y = tmp$Latitude))[,2]
-    
-    pnts_all[rounded == GPSdates[i],]$sst = SSTs
-  }
+    data.frame(index = points$index, SST = SST)
+  })
 )
 
+# Combine results and assign back to pnts_all
+results_combined <- do.call(rbind, results)
+pnts_all <- merge(pnts_all, results_combined, by.x = "index", by.y = "index", all.x = TRUE)
 
-## * BATHMETRY ---------
+## Drop the temporary columns
+pnts_all$index <- NULL
+pnts_all$rounded_time <- NULL
+
+save(pnts_all, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_data.RData"))
+
+
+# * BATHMETRY ---------
+
+### Extract bathymetry ------------
 
 # Set spatial extent
 S = min(pnts_all$Latitude, na.rm = T)
@@ -462,7 +556,24 @@ bathy.raster <- rasterFromXYZ(bathy.df, crs = CRS("+proj=longlat +datum=WGS84"))
 pnts_all$bathy <- raster::extract(bathy.raster, pnts_all[, c("Longitude", "Latitude")],
                                   method = "bilinear")
 
-save(pnts_all, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
+save(pnts_all, file = paste0("Data_inputs/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
+
+
+
+### Visualise bathymetry ------------
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+ggplot() +
+  geom_tile(data = bathy.df, aes(x = Longitude, y = Latitude, fill = depth)) +
+  geom_sf(data = world, fill = "white", color = "white") +
+  geom_point(data = pnts_all %>% filter(used == 1), 
+             aes(x = Longitude, y = Latitude), colour = "forestgreen", alpha = 0.5) +
+  scale_fill_viridis_c(option = "C", name = "Depth (m)") +
+  coord_sf(xlim = c(W+0.5, E-1), ylim = c(S+1, N-1)) +
+  theme_bw() +
+  theme(legend.justification = "top")
+
 
 # ______________________________ ####
 
@@ -470,7 +581,7 @@ save(pnts_all, file = paste0("Data_RPT/", my_species, "_", colony_exp, "_sst-bat
 
 # * Process data & standardise environment -------
 
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
+load(paste0("Data_inputs/", my_species, "_", colony_exp, "_sst-bathy_data.RData"))
 
 #source("C:/Users/ngillies/OneDrive - The University of Liverpool/Liverpool postdoc/GPS processing/wind_functions.R")
 
@@ -486,15 +597,20 @@ load(paste0("Data_outputs/", my_species, "_", colony_exp, "_sst-bathy_data.RData
 #          precip_scale = scale(precip))
 
 pnts_all %<>%
-  mutate(sst = sst - 273.15,
+  mutate(sst = SST - 273.15,
          sst_scaled = scale(sst),
-         bathy_scaled = scale(bathy))
+         bathy_scaled = scale(bathy),
+         dist_col_scaled = scale(dist_col),
+         used = ifelse(presence == "used", 1, 0)) %>%
+  rename(ID = ring) %>%
+  select(-SST)
 
-# Plot habitat use --------------------------------------------------------
+### Plot habitat use --------------------------------------------------------
 
-### SST ----------
+#### SST ----------
 
 subset_ids <- sample(unique(pnts_all$ID), 30)
+
 pnts_subset <- pnts_all %>%
   filter(ID %in% subset_ids) %>%
   filter(used == 1) %>%
@@ -506,15 +622,15 @@ pnts_subset <- pnts_all %>%
 ggplot(pnts_subset, 
        aes(x = sst, y = ID)) +
   geom_density_ridges_gradient(aes(fill = after_stat(x)), scale = 2) +
-  scale_fill_gradientn(
-    colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"),
-    name = "SST (°C)" ) +
-  labs(x = "Sea surface temperature (°C)") +
+  scale_fill_viridis_c( name = "SST (°C)" ) +
+  labs(x = "Sea surface temperature (°C)",
+       caption = "Individual density histograms for use of SST; random sample of 30 individuals.") +
   theme_bw() +
   theme(legend.justification = "top",
-        axis.text.y = element_blank())
+        axis.text.y = element_blank(),
+        plot.caption = element_text(hjust = 0.5))
 
-### Bathymetry ----------
+#### Bathymetry ----------
 
 subset_ids <- sample(unique(pnts_all$ID), 30)
 
@@ -532,14 +648,34 @@ ggplot(pnts_subset,
   scale_fill_gradientn(
     colours = c("#0D0887FF", "#CC4678FF", "#F0F921FF"),
     name = "Bathymetry (m)" ) +
-  labs(x = "Sea floor depth (m below sea level)") +
+  labs(x = "Sea floor depth (m below sea level)",
+       caption = "Individual density histograms for use of bathymetry; random sample of 30 individuals.") +
   theme_bw() +
   theme(legend.justification = "top",
-        axis.text.y = element_blank())
+        axis.text.y = element_blank(),
+        plot.caption = element_text(hjust = 0.5))
 
 
 
-# Model habitat use -------------------------------------------------------
+## Variation with distance from colony -------------------------------------
+
+# Bathymetry against maximum range
+
+med_bathy <- pnts_all %>%
+  group_by(ID, season, boutID) %>%
+  summarise(med_bathy = median(bathy, na.rm = T),
+            max_range.km = max_range[1]/1000)
+
+ggplot(med_bathy, aes(y = med_bathy, x = max_range.km)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "orange") +
+  labs(x = "Maximum range (km)", y = "Median bathymetry (m)",
+       caption = "Each point represents an individual trip.") +
+  theme_bw() +
+  theme(plot.caption = element_text(hjust = 0.5))
+
+
+# * Model habitat use -------------------------------------------------------
 
 ### Prepare data for models ----------------------------------------------------------
 
@@ -551,70 +687,33 @@ pnts_all %<>%
   filter(flag == "fine") %>%
   select(-flag)
 
-# Merge metadata
-pnts_all <- merge(pnts_all, my_trip_meta %>% rename(ID = ring),
-                  by = c("ID", "season", "datetime"), all.x = T)
+# Remove NAs and set distance to km
+pnts_all %<>% filter(!is.na(sst) & !is.na(used) & !is.na(bathy)) %>%
+  mutate(dist_col.km = dist_col/1000,
+         max_range.km = max_range/1000)
 
-# Set presence to 0 1
-pnts_all %<>% 
-  mutate(used = ifelse(presence == "used", 1, 0))
-
-# Get season
+# Make dummy ring_season variable
 pnts_all %<>%
-  mutate(season = ifelse(as.numeric(format(as.Date(datetime), "%m")) < 9,
-                         as.numeric(format(as.Date(datetime), "%Y")),
-                         as.numeric(format(as.Date(datetime), "%Y")) + 1 ),)
-
-# Remove NAs
-pnts_all %<>% filter(!is.na(sst) & !is.na(used) & !is.na(bathy))
-
-# Group into bouts of searching
-# # Sort the data by BirdID and datetime to ensure the observations are in order
-# pnts_all %<>%
-#   arrange(BirdID, presence, datetime)
-# 
-# # Calculate the time difference between consecutive observations for each BirdID
-# pnts_all %<>%
-#   group_by(BirdID, presence) %>%
-#   mutate(time_diff = as.numeric(difftime(datetime, lag(datetime), units = "mins"))) %>%
-#   ungroup()
-# 
-# # Assign a group ID to observations within 60 minutes of each other
-# pnts_all %<>%
-#   group_by(BirdID, presence) %>%
-#   mutate(group_id = cumsum(ifelse(is.na(time_diff) | time_diff > 30, 1, 0))) %>%
-#   ungroup()
-# 
-# # Summarise SST
-# pnts_all.sum <- pnts_all %>%
-#   group_by(BirdID, presence, group_id) %>%
-#   summarise(track_id = track_id[1],
-#             stt_date = datetime[1],
-#             season = season[1],
-#             mean_SST = mean(SST, na.rm = T)) %>%
-#   mutate(used = ifelse(presence == "used", 1, 0),
-#          mean_SST.scaled = scale(mean_SST),
-#          season = as.factor(season)) %>%
-#   filter(!is.na(mean_SST))
+  mutate(ID_season = paste0(ID, "_", season)) 
 
 ### Compute models ----------------------------------------------------------
 
-# Fit initial SST model - ~17 minutes
+#### SST ----
+
 system.time( sst_mod <- glmer(
-  used ~ sst + phase + (1|boutID) +
-    (1 + sst|ID) + (1|season) + (1 + sst|ID:season),
+  used ~ sst + phase + dist_col_scaled + (1|boutID) + (1|season) +
+    (1 + sst|ID_season) + (1 + sst|ID),
   data = pnts_all,
-  family = binomial(link = "logit")
+  family = binomial(link = "logit") )
 )
-)
 
-save(bathy_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_glmm.RData"))
+summary(sst_mod)
+save(sst_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_glmm.RData"))
 
-
-# Fit initial bathymetry model 
+#### Bathymetry ----
 system.time( bathy_mod <- glmer(
-  used ~ bathy_scaled + (1|boutID) +
-    (1 + bathy_scaled|ID) + (1|season) + (1 + bathy_scaled|ID:season),
+  used ~ bathy_scaled + dist_col_scaled + (1|boutID) +
+    (1 + bathy_scaled|ID) + (1|season) + (1 + bathy_scaled|ID_season),
   data = pnts_all,
   family = binomial(link = "logit"))
 )
@@ -628,11 +727,10 @@ save(bathy_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_ba
 
 
 
-# Interrogate results -----------------------------------------------------
+# * Interrogate results -----------------------------------------------------
 
-habitat_var <- "bathy_scaled" # set to habitat variable
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_", habitat_var, "_glmm.RData"))
-fitted_mod <- get(paste0(habitat_var, "_mod")) # set to focal model
+habitat_var <- "bathy_scaled" # set to habitat variable: sst, bathy_scaled
+fitted_mod <- loadRData(paste0("Data_outputs/", my_species, "_", colony_exp, "_", habitat_var, "_glmm.RData"))
 
 ### Model fit metrics: AUC, sensitivity, specificity ----
 
@@ -645,45 +743,35 @@ auc_value <- auc(roc_obj)
 cat("AUC:", auc_value, "\n") # closer to 0.5 means basically random guess; want something close to 1
 
 ### Extract & plot random effects ----
-random_effects <- ranef(fitted_mod, condVar = TRUE)
-ind_slopes <- random_effects$`ID:season`[habitat_var]  
-ind_intercepts <- random_effects$`ID:season`["(Intercept)"]        
 
-## Plot random effects
-rnd_eff.df <- data.frame(cbind(ind_intercepts, ind_slopes))
-colnames(rnd_eff.df) <- c("intercept", "slope")
-rnd_eff.df$ID = rownames(random_effects$`ID:season`)
+## Extract random effects
+rnd_eff_within.df <- get_rnd_effects(fitted_mod, habitat_var, "within")
+rnd_eff_between.df <- get_rnd_effects(fitted_mod, habitat_var, "between")
 
+## Slopes & intercepts histograms
+par(mfrow = c(2,2))
+hist(rnd_eff_within.df$intercept, main = paste0("Within-individiual intercepts: ", habitat_var))
+hist(rnd_eff_within.df$slope, main = paste0("Within-individiual slopes: ", habitat_var))
+
+hist(rnd_eff_between.df$intercept, main = paste0("Between-individiual intercepts: ", habitat_var))
+hist(rnd_eff_between.df$slope, main = paste0("Between-individiual slopes: ", habitat_var))
+
+
+# Calculate the predicted probabilities for each ID and habitat value
+
+## Get habitat range
 habitat_range <- seq(min(pnts_all[[habitat_var]], na.rm = TRUE), 
                      max(pnts_all[[habitat_var]], na.rm = TRUE), 
                      length.out = 100)
 
+## Make plots
+pred_within <- plot_ind_predictions(rnd_eff_within.df, habitat_range, habitat_var, fitted_mod)
+pred_between <- plot_ind_predictions(rnd_eff_between.df, habitat_range, habitat_var, fitted_mod)
 
-# Calculate the predicted probabilities for each ID and habitat value
-predictions <- expand.grid(ID = rnd_eff.df$ID, habitat_val = habitat_range)
+pred_within <- pred_within + labs(x = "Scaled bathymetry")
+pred_between <- pred_between + labs(x = "Scaled bathymetry")
 
-## Merge in slope/intercept
-predictions <- merge(predictions, rnd_eff.df, by = "ID", all.x = T)
-predictions$logit <- predictions$intercept + predictions$slope * predictions$habitat_val
-predictions$probability <- 1 / (1 + exp(-predictions$logit))  
-
-## get global
-global_intercept <- fixef(fitted_mod)["(Intercept)"]
-global_slope <- fixef(fitted_mod)[[habitat_var]]
-
-predictions.global <- data.frame(habitat_val = habitat_range)
-predictions.global$logit <- global_intercept + global_slope * predictions.global$habitat_val
-predictions.global$probability <- 1 / (1 + exp(-predictions.global$logit))  
-
-## Plot
-ggplot() +
-  geom_line(data = predictions, aes(x = habitat_val, y = probability, colour = ID), alpha = 0.6) +
-  geom_line(data = predictions.global, aes(x = habitat_val, y = probability), col = "black",
-            linetype = "dashed", linewidth = 1) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  labs(x = "Sea surface temperature (°C)", 
-       y = "Probability of use")
+grid.arrange(pred_within + labs(title = "Within-season"), pred_between + labs(title = "Between-season"), ncol = 2)
 
 
 ### Calculate repeatability ----
@@ -696,9 +784,9 @@ var_resid = deviance/df_resid
 
 # Random effect variance
 var_comp <- as.data.frame(VarCorr(fitted_mod))
-var_ID_season <- var_comp$vcov[var_comp$grp == "ID:season" & var_comp$var1 == "(Intercept)" & 
+var_ID_season <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == "(Intercept)" & 
                                  is.na(var_comp$var2)]
-var_ID_season_habitat <- var_comp$vcov[var_comp$grp == "ID:season" & var_comp$var1 == habitat_var &
+var_ID_season_habitat <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == habitat_var &
                                          is.na(var_comp$var2)]
 
 var_ID <- var_comp$vcov[var_comp$grp == "ID" & var_comp$var1 == "(Intercept)" &
@@ -715,7 +803,9 @@ rep_within = var_ID_season_habitat / var_total
 rep_between = var_ID_habitat / var_total
 rep_boutID = var_boutID / var_total
 
-
+rep_within * 100
+rep_between * 100
+rep_boutID * 100
 
 
 
@@ -749,6 +839,35 @@ points(temp_sf.avail$geometry, col = "red")
 # ______________________________ ####
 # APPENDIX/Code graveyard -------------------------------------------------
 
+
+# Group into bouts of searching ----
+# # Sort the data by BirdID and datetime to ensure the observations are in order
+# pnts_all %<>%
+#   arrange(BirdID, presence, datetime)
+# 
+# # Calculate the time difference between consecutive observations for each BirdID
+# pnts_all %<>%
+#   group_by(BirdID, presence) %>%
+#   mutate(time_diff = as.numeric(difftime(datetime, lag(datetime), units = "mins"))) %>%
+#   ungroup()
+# 
+# # Assign a group ID to observations within 60 minutes of each other
+# pnts_all %<>%
+#   group_by(BirdID, presence) %>%
+#   mutate(group_id = cumsum(ifelse(is.na(time_diff) | time_diff > 30, 1, 0))) %>%
+#   ungroup()
+# 
+# # Summarise SST
+# pnts_all.sum <- pnts_all %>%
+#   group_by(BirdID, presence, group_id) %>%
+#   summarise(track_id = track_id[1],
+#             stt_date = datetime[1],
+#             season = season[1],
+#             mean_SST = mean(SST, na.rm = T)) %>%
+#   mutate(used = ifelse(presence == "used", 1, 0),
+#          mean_SST.scaled = scale(mean_SST),
+#          season = as.factor(season)) %>%
+#   filter(!is.na(mean_SST))
 
 # Alternative code for matching habitat data ------------------------------
 

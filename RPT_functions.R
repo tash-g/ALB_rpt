@@ -1,9 +1,3 @@
-# loadRdata -----------------------------------------------
-loadRData <- function(fileName){
-  #loads an RData file, and returns it
-  load(fileName)
-  get(ls()[ls() != "fileName"])
-}
 
 
 # boot_rpt ----------------------------------------------------------------
@@ -72,41 +66,41 @@ boot_rpt <- function(n_boot, mydata, myformula) {
 
 }
 
-# lrt_test ----------------------------------------------------------------
 
-lrt_test <- function(myformula, rndmeff, mycov, mydata, myspecies) {
-  
-  # Main model
-  mod.main <- lmer(myformula, mydata)
-  
-  # Null model
-  if (rndmeff == "ring") {
-    formula_null <- as.formula(paste(mycov, "~ (1|season) + (1|ring:season) + phase + age"))
-  } else if (rndmeff == "ring:season") {
-    formula_null <- as.formula(paste(mycov, "~ (1|season) + (1|ring) + phase + age"))
-  }
-  
-  ### Fit the null model
-  mod.null <- suppressMessages(lmer(formula_null, mydata))
-  LRT <- suppressMessages(anova(mod.main, mod.null))
-  
-  ### Extract results
-  LRT_df <- data.frame(LRT)
-  
-  LRT_df <- LRT_df %>%
-    mutate(species = myspecies,
-           rndm = ifelse(grepl("null", rownames(LRT_df)), paste0(rndmeff, "_NULL"), rndmeff),
-           par = mycov,
-           Chisq = round(Chisq, 2),
-           Pr..Chisq. = signif(Pr..Chisq., 2)) %>%
-    rename(p = Pr..Chisq.) %>%
-    select(-c(npar, deviance, Df)) %>%
-    relocate(species, par, rndm, .before = AIC)
-  rownames(LRT_df) <- NULL
-  
-  return(LRT_df)
+# cut_to_breeding ---------------------------------------------------------
 
+cut_to_breeding <- function(data, medLay, medHatch, hatchTime, broodTime) {
+  
+  # Process the data
+  data %>%
+    mutate(rs = ifelse(is.na(rs), "UNKNOWN", rs)) %>%
+    mutate(lay_date = ifelse(is.na(lay_date), paste0(season - 1, "-", medLay), as.character(lay_date)),
+           hatch_code = ifelse(is.na(hatch_date), "NEW_EST", "MEAS"),
+           hatch_date = ifelse(is.na(hatch_date) & rs != "FAILED_EGG", paste0(season, "-", medHatch), as.character(hatch_date)),
+           hatch_month = month(as.Date(hatch_date)),
+           hatch_date = ifelse(hatch_month > 9 & hatch_code == "NEW_EST", 
+                               as.character(as.Date(hatch_date) - 365), as.character(hatch_date))) %>%
+    mutate(across(c(lay_date, hatch_date, fail_date), as.Date)) %>%
+    select(-c(hatch_month)) %>%
+    mutate(flag = ifelse(!is.na(fail_date) & as.Date(datetime) >= fail_date, "flag", "fine")) %>%
+    filter(flag == "fine") %>%
+    select(-flag) %>%
+    mutate(brood_end = ifelse(!is.na(hatch_date), as.character(hatch_date + broodTime),
+                              as.character(lay_date + hatchTime))) %>%
+    mutate(brood_end = as.Date(brood_end)) %>%
+    group_by(ring, season, boutID) %>%
+    mutate(start_time = first(datetime, 1), end_time = last(datetime, 1),
+           remove = ifelse(as.Date(end_time) < lay_date - 1 | as.Date(end_time) > brood_end, "remove", "keep")) %>%
+    filter(remove == "keep") %>%
+    select(-remove) %>%
+    mutate(phase = ifelse(as.Date(datetime) < hatch_date | is.na(hatch_date), "incubation", "brooding")) %>%
+    arrange(ring, datetime) %>%
+    select(-brood_end)
 }
+
+
+
+
 
 # calc_repeatability ------------------------------------------------------
 
@@ -148,42 +142,6 @@ calc_rpt_grouped <- function(mydata, myformula, mygroup, group_levels, myspecies
 }
 
 
-# perm_repeatability ------------------------------------------------------
-
-perm_repeatability <- function(n_perm, mydata, myformula, rptannual, rptwithin, rptbetween) {
-  
-  perm_annual <- numeric(n_perm)
-  perm_within <- numeric(n_perm)
-  perm_between <- numeric(n_perm)
-  
-  for (i in 1:n_perm) {
-    # Shuffle ring labels within each season
-    perm_data <- mydata
-    perm_data$ring <- ave(perm_data$ring, perm_data$season, FUN = function(x) sample(x))
-    
-    # Refit the model
-    perm_model <- suppressMessages(lmer(formula, data = perm_data))
-    
-    # Calculate within-season repeatability for this permuted sample
-    perm_annual[i] <- extract_rpt(perm_model)[1]
-    perm_within[i] <- extract_rpt(perm_model)[2]
-    perm_between[i] <- extract_rpt(perm_model)[3]
-  
-  }
-  
-  # Calculate the p-value as the proportion of permuted repeatability values
-  # greater than or equal to the observed within-season repeatability
-  perm_results <- list(
-    p_value.annual = mean(perm_annual >= rptannual),
-    p_value.within = mean(perm_within >= rptwithin),
-    p_value.between = mean(perm_between >= rptbetween)
-  )
-
-  perm_df <- t(data.frame(perm_results))
-  colnames(perm_df) <- "p"
-  return(perm_df)
-  
-}
 
 
 # extract_rpt ---------------------------------------------------
@@ -258,3 +216,150 @@ extract_variances.brms <- function(model) {
   return(repeatabilities)
 }
 
+
+# get_rnd_effects -------------------------------------------------------------------------
+
+# Calculate random intercepts and slopes for individual/individual within season
+
+get_rnd_effects <- function(mod_fit, hab_var, level) {
+  
+  ID_var = ifelse(level == "within", "ID_season", "ID")
+  
+  random_effects <- ranef(mod_fit, condVar = TRUE)
+  slopes <- random_effects[[ID_var]][habitat_var]  
+  intercepts <- random_effects[[ID_var]]["(Intercept)"]        
+  
+  rnd_eff.df <- data.frame(cbind(intercepts, slopes))
+  colnames(rnd_eff.df) <- c("intercept", "slope")
+  rnd_eff.df$ID = rownames(random_effects[[ID_var]])
+  rownames(rnd_eff.df) <- NULL
+  rnd_eff.df$level = level
+  
+  return(rnd_eff.df)
+}
+
+# loadRdata -----------------------------------------------
+loadRData <- function(fileName){
+  #loads an RData file, and returns it
+  load(fileName)
+  get(ls()[ls() != "fileName"])
+}
+
+# lrt_test ----------------------------------------------------------------
+
+lrt_test <- function(myformula, rndmeff, mycov, mydata, myspecies) {
+  
+  # Main model
+  mod.main <- lmer(myformula, mydata)
+  
+  # Null model
+  if (rndmeff == "ring") {
+    formula_null <- as.formula(paste(mycov, "~ (1|season) + (1|ring:season) + phase + age"))
+  } else if (rndmeff == "ring:season") {
+    formula_null <- as.formula(paste(mycov, "~ (1|season) + (1|ring) + phase + age"))
+  }
+  
+  ### Fit the null model
+  mod.null <- suppressMessages(lmer(formula_null, mydata))
+  LRT <- suppressMessages(anova(mod.main, mod.null))
+  
+  ### Extract results
+  LRT_df <- data.frame(LRT)
+  
+  LRT_df <- LRT_df %>%
+    mutate(species = myspecies,
+           rndm = ifelse(grepl("null", rownames(LRT_df)), paste0(rndmeff, "_NULL"), rndmeff),
+           par = mycov,
+           Chisq = round(Chisq, 2),
+           Pr..Chisq. = signif(Pr..Chisq., 2)) %>%
+    rename(p = Pr..Chisq.) %>%
+    select(-c(npar, deviance, Df)) %>%
+    relocate(species, par, rndm, .before = AIC)
+  rownames(LRT_df) <- NULL
+  
+  return(LRT_df)
+  
+}
+
+# perm_repeatability ------------------------------------------------------
+
+perm_repeatability <- function(n_perm, mydata, myformula, rptannual, rptwithin, rptbetween) {
+  
+  perm_annual <- numeric(n_perm)
+  perm_within <- numeric(n_perm)
+  perm_between <- numeric(n_perm)
+  
+  for (i in 1:n_perm) {
+    # Shuffle ring labels within each season
+    perm_data <- mydata
+    perm_data$ring <- ave(perm_data$ring, perm_data$season, FUN = function(x) sample(x))
+    
+    # Refit the model
+    perm_model <- suppressMessages(lmer(formula, data = perm_data))
+    
+    # Calculate within-season repeatability for this permuted sample
+    perm_annual[i] <- extract_rpt(perm_model)[1]
+    perm_within[i] <- extract_rpt(perm_model)[2]
+    perm_between[i] <- extract_rpt(perm_model)[3]
+    
+  }
+  
+  # Calculate the p-value as the proportion of permuted repeatability values
+  # greater than or equal to the observed within-season repeatability
+  perm_results <- list(
+    p_value.annual = mean(perm_annual >= rptannual),
+    p_value.within = mean(perm_within >= rptwithin),
+    p_value.between = mean(perm_between >= rptbetween)
+  )
+  
+  perm_df <- t(data.frame(perm_results))
+  colnames(perm_df) <- "p"
+  return(perm_df)
+  
+}
+
+
+# plot_ind_predictions ----------------------------------------------------
+
+# Plot individual responses to habitat
+
+plot_ind_predictions <- function(rnd_eff, hab_range, hab_var, mod_fit) {
+  
+  predictions <- expand.grid(ID = rnd_eff$ID, habitat_val = hab_range)
+  
+  ## Merge in slope/intercept
+  predictions <- merge(predictions, rnd_eff, by = "ID", all.x = T)
+  
+  predictions$logit <- predictions$intercept + predictions$slope * predictions$habitat_val
+  predictions$probability <- 1 / (1 + exp(-predictions$logit))  
+  
+  ## Get global predictions
+  global_intercept <- fixef(mod_fit)["(Intercept)"]
+  global_slope <- fixef(mod_fit)[[hab_var]]
+  
+  predictions.global <- data.frame(habitat_val = hab_range)
+  predictions.global$logit <- global_intercept + global_slope * predictions.global$habitat_val
+  predictions.global$probability <- 1 / (1 + exp(-predictions.global$logit))  
+  
+  ## Plot
+  pred_plot <- ggplot() +
+    geom_line(data = predictions, aes(x = habitat_val, y = probability, colour = ID), alpha = 0.6) +
+    geom_line(data = predictions.global, aes(x = habitat_val, y = probability), col = "black",
+              linetype = "dashed", linewidth = 1) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    labs(x = "Sea surface temperature (°C)", 
+         y = "Probability of use")
+  
+  return(pred_plot)
+  
+}
+
+
+# sample_points -----------------------------------------------------------
+
+# Vectorized random sampling function
+sample_points <- function(geometry, max_range, n) {
+  buffer <- st_buffer(geometry, dist = max_range[1])
+  st_sample(buffer, size = n, type = "random")
+}
