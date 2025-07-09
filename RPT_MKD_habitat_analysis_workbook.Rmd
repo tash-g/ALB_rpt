@@ -52,7 +52,7 @@ At this point I have (1) randomly sampled available habitat on a ratio of 6 avai
 
 To ensure appropriate model fit, I'll be working on each species/colony separately. I can think about integrating them later, if the residual distributions etc are similar.
 
-## Black-browed albatrosses
+## EXPLORATION: Black-browed albatrosses
 
 ### Bird Island
 
@@ -1074,6 +1074,10 @@ ggarrange(plot_pop.linear, plot_pop.quad,
 #knitr::knit_exit()
 
 ```
+
+# MAIN ANALYSIS
+
+- Models need to have uncorrelated random slopes, as the intercept measures the sampling ratio. 
 
 # Wandering albatrosses
 
@@ -2156,11 +2160,38 @@ mod_brm <- brm(
   control = list(adapt_delta = 0.95)
 )
 
-# started 16:23 - 16 hours later was on 20%
+mod_noA <- brm(
+  sst_scaled ~ dist_col + phase + (1 | season) + (1 | tripID) + (1 | animal),
+  data = pnts.heritable,
+  family = gaussian(),
+  chains = 4, cores = 4, iter = 4000)
+
+
+mod_simple <- brm(
+  sst_scaled ~ (1 | gr(animal, cov = A)),
+  data = pnts.heritable,
+  family = gaussian(),
+  data2 = list(A = A) )
+
+# subsampled version took 24 hours
 
 save(mod_brm, file = "Data_outputs/TEMP_waal_cro_hertiability.RData")
 # to do this on a slope would require
 # (1 + sst_scaled | gr(animal, cov = A))
+
+plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+pp_check(mod_brm)
+
+pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+
+posterior <- as_draws_df(mod_brm)
+ggplot(posterior, aes(x = sd_animal__Intercept)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  labs(
+    title = "Posterior for additive genetic SD",
+    x = "SD(animal)",
+    y = "Density" )
+
 
 ```
 
@@ -2507,11 +2538,12 @@ gc()
 
 load("Data_inputs/bbal_birdis_habitat_data.RData")
 
-env_vars = c("sst", "bathy", "chl")
 
 # Calculate conditional repeatability ------
 
 ## Store envronmental variables
+env_vars = c("sst", "bathy", "chl")
+
 sst_scaled <- unlist(pnts_all$sst_scaled)
 bathy_scaled <- unlist(pnts_all$bathy_scaled)
 chl_scaled <- unlist(pnts_all$chl_scaled)
@@ -2727,6 +2759,29 @@ save(pnts_all, file = "Data_inputs/bbal_ker_habitat_data.RData")
 
 ```
 
+```{r check_used_available}
+
+used_avail_summary <- pnts_all %>%
+  group_by(ID) %>%
+  summarise(
+    used_count = sum(used == 1),
+    avail_count = sum(used == 0),
+    total = n(),
+    used_ratio = used_count / total )
+
+good_ids <- used_avail_summary %>%
+  filter(used_ratio > 0.1, used_ratio < 0.2) %>%
+  pull(ID)
+
+pnts_balanced <- pnts_all %>%
+  filter(ID %in% good_ids)
+
+with(pnts_balanced, prop.table(table(ID, used), 1))
+
+
+
+```
+
 #### Habitat use
 
 ##### Fit the models
@@ -2872,42 +2927,42 @@ load("Data_inputs/bbal_ker_habitat_data.RData")
 
 # Within season #
 
-tok <- Sys.time()
-bbal_ker_glmm.within_sst <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-         (1 + sst_scaled | ID_season) + (1 | tripID),
-  data = pnts_all,
-  family = binomial() )
-tik <- Sys.time()
-
-tik - tok
-
-save(bbal_ker_glmm.within_sst, file = "Data_outputs/bbal_ker_glmm_within_sst.RData")
-rm(bbal_ker_glmm.within_sst); gc()
-
-bbal_ker_glmm.within_bathy <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 + bathy_scaled | ID_season) + (1 | tripID),
-  data = pnts_all,
-  family = binomial() )
-
-save(bbal_ker_glmm.within_bathy, file = "Data_outputs/bbal_ker_glmm_within_bathy.RData")
-rm(bbal_ker_glmm.within_bathy); gc()
-
-bbal_ker_glmm.within_chl <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 + chl_scaled | ID_season) + (1 | tripID),
-  data = pnts_all,
-  family = binomial() )
-
-save(bbal_ker_glmm.within_chl, file = "Data_outputs/bbal_ker_glmm_within_chl.RData")
-rm(bbal_ker_glmm.within_chl); gc()
+# tok <- Sys.time()
+# bbal_ker_glmm.within_sst <- glmmTMB(
+#   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
+#          (1 + sst_scaled | ID_season) + (1 | tripID),
+#   data = pnts_all,
+#   family = binomial() )
+# tik <- Sys.time()
+# 
+# tik - tok
+# 
+# save(bbal_ker_glmm.within_sst, file = "Data_outputs/bbal_ker_glmm_within_sst.RData")
+# rm(bbal_ker_glmm.within_sst); gc()
+# 
+# bbal_ker_glmm.within_bathy <- glmmTMB(
+#   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
+#          (1 + bathy_scaled | ID_season) + (1 | tripID),
+#   data = pnts_all,
+#   family = binomial() )
+# 
+# save(bbal_ker_glmm.within_bathy, file = "Data_outputs/bbal_ker_glmm_within_bathy.RData")
+# rm(bbal_ker_glmm.within_bathy); gc()
+# 
+# bbal_ker_glmm.within_chl <- glmmTMB(
+#   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
+#          (1 + chl_scaled | ID_season) + (1 | tripID),
+#   data = pnts_all,
+#   family = binomial() )
+# 
+# save(bbal_ker_glmm.within_chl, file = "Data_outputs/bbal_ker_glmm_within_chl.RData")
+# rm(bbal_ker_glmm.within_chl); gc()
 
 # Between season #
 
 bbal_ker_glmm.between_sst <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 + sst_scaled | ID) + (1 | tripID),
+         (1 | ID) + (0 + sst_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial(),
   control = glmmTMBControl(optCtrl = list(iter.max=1e5, eval.max=1e5)) )
@@ -2915,18 +2970,20 @@ bbal_ker_glmm.between_sst <- glmmTMB(
 save(bbal_ker_glmm.between_sst, file = "Data_outputs/bbal_ker_glmm_between_sst.RData")
 rm(bbal_ker_glmm.between_sst); gc()
 
+
 bbal_ker_glmm.between_bathy <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 + bathy_scaled | ID) + (1 | tripID),
+         (1 | ID) + (0 + bathy_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
 save(bbal_ker_glmm.between_bathy, file = "Data_outputs/bbal_ker_glmm_between_bathy.RData")
 rm(bbal_ker_glmm.between_bathy); gc()
 
+
 bbal_ker_glmm.between_chl <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 + chl_scaled | ID) + (1 | tripID),
+         (1 | ID) + (0 + chl_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2992,27 +3049,29 @@ auc_results %<>% mutate(species = "BBAL", colony = "kerguelen") %>% relocate(c(s
 
 ```{r bbal_ker_fixed_effects_predictions }
 
-load("Data_outputs/bbal_ker_glmm_within_sst.RData")
-load("Data_outputs/bbal_ker_glmm_within_bathy.RData")
-load("Data_outputs/bbal_ker_glmm_within_chl.RData")
-
 load("Data_outputs/bbal_ker_glmm_between_sst.RData")
 load("Data_outputs/bbal_ker_glmm_between_bathy.RData")
 load("Data_outputs/bbal_ker_glmm_between_chl.RData")
 
-
 # Plot effects
-pred_plot.sst <-   plot(ggeffects::ggpredict(bbal_ker_glmm.within_sst, terms = "sst_scaled [all]", type = "fixed"))
-pred_plot.bathy <- plot(ggeffects::ggpredict(bbal_ker_glmm.within_bathy, terms = "bathy_scaled [all]", type = "fixed"))
-pred_plot.chl <-  plot(ggeffects::ggpredict(bbal_ker_glmm.within_chl, terms = "chl_scaled [all]", type = "fixed"))
+pred_plot.sst <-   plot(ggeffects::ggpredict(bbal_ker_glmm.between_sst, terms = "sst_scaled [all]", type = "fixed"))
+pred_plot.bathy <- plot(ggeffects::ggpredict(bbal_ker_glmm.between_bathy, terms = "bathy_scaled [all]", type = "fixed"))
+pred_plot.chl <-   plot(ggeffects::ggpredict(bbal_ker_glmm.between_chl, terms = "chl_scaled [all]", type = "fixed"))
 
-all_plots <- ggarrange(pred_plot.sst + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)", y = "Used")) + theme(plot.title = element_blank()), 
-          pred_plot.bathy + labs(x = "Scaled bathymetry (m below sea level)", y = "Used") + theme(plot.title = element_blank(),
-                                  axis.title.y = element_blank()),
-          pred_plot.chl + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")", y = "Used")) + theme(plot.title = element_blank()),
-          ncol = 2, nrow = 2)
+all_plots <- ggarrange(pred_plot.sst + 
+                         labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)", y = "Used")) +
+                         theme(plot.title = element_blank()), 
+                       pred_plot.bathy + 
+                         labs(x = "Scaled bathymetry (m below sea level)", y = "Used") + 
+                         theme(plot.title = element_blank(),
+                               axis.title.y = element_blank()),
+                      pred_plot.chl + 
+                        labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")", y = "Used")) +
+                        theme(plot.title = element_blank(),
+                              axis.title.y = element_blank()),
+          ncol = 3, nrow = 1)
 
-png("Figures/bbal_ker_habitat_fixed_effects.png")
+png("Figures/bbal_ker_habitat_fixed_effects.png", width = 9, height = 4, units = "in", res = 600)
 all_plots
 dev.off()
 
@@ -3035,11 +3094,11 @@ One sticking point with conditional repeatability is that it only works with lin
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
-env_vars = c("sst", "bathy", "chl")
-
 # Calculate conditional repeatability ------
 
 ## Store envronmental variables
+env_vars = c("sst", "bathy", "chl")
+
 sst_scaled <- unlist(pnts_all$sst_scaled)
 bathy_scaled <- unlist(pnts_all$bathy_scaled)
 chl_scaled <- unlist(pnts_all$chl_scaled)
@@ -3057,48 +3116,29 @@ for (i in 1:length(env_vars)) {
   habitat_var = paste0(env_vars[i], "_scaled")
   
   # Get models
-  load(paste0("Data_outputs/bbal_ker_glmm_within_", env_vars[i], ".RData"))
   load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars[i], ".RData"))
 
-  mod_within = get(paste0("bbal_ker_glmm.within_", env_vars[i]))
   mod_between = get(paste0("bbal_ker_glmm.between_", env_vars[i]))
   
   # Calculate conditional repeatability parameters
   
   env_current <- var_map[[env_vars[i]]]
   
-  ## Within ##
-  res_within <- condR(
-    betaX = fixef(mod_within)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = as.matrix(VarCorr(mod_within)$cond$ID_season),    
-    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_within.summary <- data.frame(var_between = res_within$Vi,
-                            R2 = res_within$R2s, 
-                            marginal_R2 = res_within$Rmar,
-                            med_rpt = median(res_within$condR$condR),
-                            env = env_vars[i],
-                            species = "BBAL",
-                            colony = "Kerguelen", 
-                            level = "Within")
-  
-  rownames(res_within.summary) <- NULL
-   
   ## Between ##
+ 
+  my_sigma = matrix( c(
+    as.numeric(VarCorr(mod_between)$cond$ID), 0,
+    0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
+  nrow = 2) 
+  
   res_between <- condR(
     betaX = fixef(mod_between)$cond[habitat_var],
     meanX =  mean(env_current),
     Vx = var(env_current),
     Vr = (pi^2)/3,
-    Sigma = as.matrix(VarCorr(mod_between)$cond$ID),    
+    Sigma = my_sigma,    
     Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
-    xrange = range(env_current)
-  )
+    xrange = range(env_current) )
   
   res_between.summary <- data.frame(var_between = res_between$Vi,
                             R2 = res_between$R2s, 
@@ -3111,16 +3151,14 @@ for (i in 1:length(env_vars)) {
   
   rownames(res_between.summary) <- NULL
   
-  res.summary <- rbind(res_within.summary, res_between.summary) %>% 
+  res.summary <- res_between.summary %>% 
     relocate(c(species, colony, level, env), .before = var_between)
   
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
     geom_line(data = res_between$condR, aes(x=x, y=condR), col = "#FFC107", size = 1) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR), col = "#D81B60", size = 1) +
     geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#f3a20c") +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#b31650") +
     labs(y = "Conditional repeatability") +
     theme_bw() 
 
