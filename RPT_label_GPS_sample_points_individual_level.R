@@ -1,0 +1,334 @@
+## ---------------------------
+##
+## Script name: RPT_available_habitat
+##
+## Purpose of script: Randomly sample available locations
+##
+## Author: Dr. Natasha Gillies
+##
+## Created: 2024-12-10
+##
+## Email: gilliesne@gmail.com
+##
+## ---------------------------
+
+
+# Load functions, packages, & data ---------------------------------------------
+
+# Functions for GPS processing and plotting
+source("RPT_functions.R")
+
+# Define the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "rptR", "gridExtra", "tidyr",
+              "momentuHMM", "sf", "ecmwfr", "lubridate", "terra", "raster", "marmap",
+              "pROC", "ggridges", "rnaturalearth", "DHARMa", "adehabitatHR") 
+
+# Install packages not yet installed - change lib to library path
+# installed_packages <- packages %in% rownames(installed.packages())
+# 
+# if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+# Load packages
+invisible(lapply(packages, library, character.only = TRUE))
+
+# Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+
+# Make sure using dplyr select
+select <- dplyr::select
+
+
+
+# Load the data -----------------------------------------------------------
+
+# Set parameters
+colony <- "ker" # cro bi ker
+my_species <- "bba" # waal bba
+
+colony_exp <- ifelse(colony == "ker", "kerguelen",
+                     ifelse(colony == "cro", "crozet",
+                            "birdis"))
+
+# Load the GPS data
+gps_files <- list.files("Data_inputs/", pattern = paste0(my_species, "_", colony_exp, "_gps"))
+my_file <- gps_files[grepl("labelled", gps_files)]
+
+my_gps <- loadRData(paste0("Data_inputs/", my_file)) 
+
+my_trip_meta <- my_gps %>% select(c(ring, season, datetime, dist_col, phase, boutID)) %>%
+  group_by(ring, season) %>% mutate(max_range = max(dist_col, na.rm = T)) %>% ungroup()
+
+my_gps %<>%
+  mutate(ID = paste0(ring, "_", season, "_", boutID),
+         season = ifelse(as.numeric(format(as.Date(datetime), "%m")) < 9,
+                         as.numeric(format(as.Date(datetime), "%Y")),
+                         as.numeric(format(as.Date(datetime), "%Y")) + 1 ))
+
+# ______________________________ ####
+# ISOLATE FORAGING BEHAVIOUR -----------------------------------------
+
+### Prepare dataset ------
+
+my_gps %<>% 
+  # Check formatting
+  mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
+  mutate(across(c(latitude, longitude), as.numeric)) %>% 
+  filter(!is.na(longitude) & !is.na(latitude)) %>%
+  # Filter for trips only
+  filter(loc == "trip") %>%
+  group_by(ID) %>%
+  mutate(n_recs = n()) %>%
+  # Remove short trips
+  filter(n_recs > 3) %>% # loses 28 trips 
+  select(-n_recs) %>%
+  ungroup() 
+
+my_gps.hmm <- my_gps %>%
+  select(ID, datetime, longitude, latitude) %>%
+  arrange(ID, datetime) %>%
+  relocate(ID, longitude, latitude) %>% 
+  data.frame() 
+
+gps_hmm <- prepData(my_gps.hmm,
+                    type = "LL", 
+                    coordNames = c("longitude", "latitude")) 
+
+
+# Remove erroneous step lengths that can't be larger than 40 m
+hist(gps_hmm$step)
+nrow(subset(gps_hmm, step > 40))/nrow(gps_hmm)
+gps_hmm <- subset(gps_hmm, step < 40)
+
+### Set 0s to very small numbers 
+gps_hmm$step[gps_hmm$step == 0 | is.na(gps_hmm$step)] <- runif(sum(gps_hmm$step == 0 | is.na(gps_hmm$step))) / 10000
+gps_hmm <- na.omit(gps_hmm)
+gps_hmm %<>% filter(!is.na(angle) & !is.na(step))
+
+save(gps_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+
+
+
+### Fit the HMM  ---------
+
+### NOTE: Initial value finding code taken from Clay et al. 2020 - eventually need to optimise for BBAL
+
+## Assign step lengths based on previously identified initial values
+shape_0 <- c(12.42, 4.10, 0.33)
+scale_0 <- c(3.62, 4.71, 0.17)
+stepPar0 <- c(shape_0, scale_0)
+
+## Assigning turning angles based on previously identified initial values
+location_0 <- c(0.00302, 0.00343, 0.0291)
+concentration_0 <- c(50.79, 1.27, 44.02)
+anglePar0 <- c(location_0, concentration_0)
+
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+
+stateNames <- c("travel","search", "rest")
+
+my_hmm <- fitHMM(
+  data = gps_hmm,
+  nbStates = 3,
+  dist = list(step = "gamma", angle = "vm"),
+  Par0 = list(step = stepPar0, angle = anglePar0),
+  estAngleMean = list(angle = TRUE),
+  stateNames = stateNames
+)
+
+save(my_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.RData"))
+
+## Plot pseudo-residuals
+# plotPR(my_hmm)
+
+
+### Assign behaviours ---------
+
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.RData"))
+
+hmm_data_out <- my_hmm$data
+hmm_data_out$State <- viterbi(my_hmm)
+
+# Assess step/angle distributions
+# ggplot(aes(x = step, fill = as.factor(State)), data = hmm_data_out) + geom_histogram(alpha = 0.5)
+# ggplot(aes(x = angle, fill = as.factor(State)), data = hmm_data_out) + geom_histogram(alpha = 0.5)
+
+# Label each state and check classification
+hmm_data_out$State[hmm_data_out$State == 1] <- "Travel"
+hmm_data_out$State[hmm_data_out$State == 2] <- "Search"
+hmm_data_out$State[hmm_data_out$State == 3] <- "Rest"
+
+# Check states
+# table(hmm_data_out$State)
+
+# Calculate percentage time spent in each state 
+# hmm_data_out %>%
+#   group_by(State) %>%
+#   summarize(counts = n()) %>%
+#   mutate(per = counts / sum(counts) * 100) %>%
+#   collect()
+
+# Merge with OG data
+hmm_states <- hmm_data_out %>% select(c(ID, datetime, step, angle, State))
+
+my_gps %<>% select(ring, season, datetime, longitude, latitude, dist_col, boutID, ID)
+my_gps <- merge(my_gps, hmm_states, by = c("ID", "datetime"), all.x =T)
+my_gps %<>% filter(!is.na(step) & !is.na(angle))
+
+save(my_gps, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_labelledHMM.RData"))
+
+
+
+# ______________________________ ####
+# SAMPLE FOR AVAILABLE HABITAT -------------------------------------
+
+# Load breeding dates
+load("Data_inputs/breeding_dates.RData")
+
+spec_col <- c("bba_kerguelen", "bba_birdis", "waal_birdis", "waal_crozet")
+ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
+bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
+cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
+
+n.pnts = 6
+
+for (i in 1:length(spec_col)) {
+
+  set.seed(123) 
+  
+  print(paste0("Processing ", spec_col[i], "..."))
+  
+  load(paste0("Data_outputs/", spec_col[i], "_labelledHMM.RData"))
+  
+  my_species = strsplit(spec_col, "_")[[i]][1]
+  my_colony = strsplit(spec_col, "_")[[i]][2]
+  my_colony = ifelse(my_colony == "birdis", "birdisland", my_colony)
+  
+  ## Match in breeding phase
+  my_breeding <- breed_dates %>% filter(species == my_species, colony == my_colony) %>%
+         pivot_longer(cols = c(ring, partner), names_to = "role", values_to = "ring") %>%
+         select(c(season, ring, lay_date, hatch_date))
+  
+  my_gps <- merge(my_gps, my_breeding, by = c("ring", "season"))
+  my_gps %<>% mutate(date = as.Date(datetime),
+                     lay_date = as.Date(lay_date),
+                     hatch_date = as.Date(hatch_date),
+                     phase = ifelse(date <= hatch_date, "incubation", "brooding"))
+  
+  ## Get colony coords
+  if (grepl("kerguelen", spec_col[i])) {
+    col_coords <- ker_coords
+  } else if (grepl("birdis", spec_col[i])) {
+    col_coords <- bi_coords
+  } else if (grepl("crozet", spec_col[i])) {
+    col_coords <- cro_coords }
+  
+  ## Calculate MCP per individual ----------------
+  my_gps$year = year(my_gps$datetime)
+  
+  # Make dummy ring ID to account for breeding phase (separate MCP per phase)
+  my_gps %<>% mutate(dummy_ring = paste(ring, phase, sep = "_"))
+  
+  mcp.df <- my_gps %>% select(longitude, latitude, dummy_ring) %>% rename(x = longitude, y = latitude, ID = dummy_ring)
+  coordinates(mcp.df) <- mcp.df[, c('x', 'y')]
+  
+  mcp.est <- mcp(mcp.df[, 3], percent = 100)
+  
+  ## Split the MCPs by individual
+  mcp.list <- split(mcp.est, mcp.est$id)
+  
+  ## Make a land mask
+  land <- ne_countries(scale = "medium", returnclass = "sf") %>% st_transform(3031)#4326)
+  land <- st_make_valid(land)
+  
+  # Sample points within individual ranges
+  sampled_pts.list <- list()
+  
+  for (m in 1:length(mcp.list)) {
+    
+    print(paste0("Sampling MCP ", m, " of ", length(mcp.list), "."))
+    
+    mcp.ind <- st_as_sf(mcp.list[[m]])
+    mcp.ind <- st_set_crs(mcp.ind, 4326)
+    
+    mcp.ind <- st_transform(mcp.ind, crs = 3031 )
+    
+    # Add a buffer
+    mcp.buffer <- st_buffer(mcp.ind, dist = 15000, nQuadSegs = 1)
+    #mcp.buffer <- st_buffer(st_transform(mcp.ind, 4326), dist = 15000, nQuadSegs = 1)
+    
+    # Remove land
+    mcp.buffer_noLand <- st_difference(mcp.buffer, st_union(land))
+    mcp.buffer_noLand <- mcp.buffer_noLand$geometry
+    mcp.buffer_noLand <- st_union(mcp.buffer_noLand)
+    mcp.buffer_noLand <- st_make_valid(mcp.buffer_noLand)
+    
+    # Sample points within this
+    gps.filtered <- my_gps %>% filter(dummy_ring == mcp.ind$id) %>% mutate(date_hourly = round(datetime, units = "hours"))
+    
+    sampled_pnts <- gps.filtered %>% 
+      group_by(date_hourly) %>% 
+      summarise(random_pnts = list(st_sample(mcp.buffer_noLand, n() * n.pnts)), .groups = "drop",
+                tripID = boutID[1]) %>%
+      unnest(random_pnts) %>%
+      mutate(row_id = row_number())
+    
+    ## Extract coordinates
+    avail_pnts <- data.frame(st_coordinates(sampled_pnts$random_pnts))
+    colnames(avail_pnts) <- c("longitude", "latitude")
+  
+    ### Convert back to lat/lon
+    avail_pnts_sf <- st_as_sf(avail_pnts, coords = c("longitude", "latitude"), crs = 3031)
+    avail_pnts_latlon <- st_transform(avail_pnts_sf, 4326)
+    coords <- st_coordinates(avail_pnts_latlon)
+    
+    avail_pnts <- avail_pnts_latlon %>%
+      st_drop_geometry() %>%
+      mutate(longitude = coords[,1],
+             latitude = coords[,2],
+             ring = rep(mcp.ind$id), 
+             date_hourly = sampled_pnts$date_hourly, 
+             tripID = sampled_pnts$tripID,
+             year = year(date_hourly)) %>% 
+      relocate(ring, year, tripID, date_hourly, longitude, latitude)
+    
+    sampled_pts.list[[m]] <- avail_pnts
+    
+  }
+  
+  avail.pnts.df <- do.call("rbind", sampled_pts.list)
+  avail.pnts.df %<>% mutate(used = 0)
+  
+  # Bind in with used points
+  used.pnts.df <- my_gps %>% 
+                    mutate(date_hourly = round(datetime, units = "hours"), 
+                           used = 1) %>% 
+    rename(tripID = boutID) %>% 
+    select(c(ring, year, tripID, date_hourly, longitude, latitude, used))
+  
+  all_pnts <- rbind(used.pnts.df, avail.pnts.df) %>% arrange(ring, date_hourly)
+  
+  # Calculate distance from the colony
+  all_pnts$dist_col <- apply(all_pnts, 1, function(row) {
+    point_coords <- c(as.numeric(row["longitude"]), as.numeric(row["latitude"]))
+    geosphere::distHaversine(point_coords, col_coords)
+  })
+  all_pnts$dist_col <- all_pnts$dist_col/1000
+  
+  # Get metadata (specifically, breeding phase) -----
+  
+  gps_files <- list.files("Data_inputs/", pattern = paste0(spec_col[i], "_gps"))
+  my_file <- gps_files[grepl("labelled", gps_files)]
+  gps_meta <- loadRData(paste0("Data_inputs/", my_file)) %>% select(c(ring, datetime, phase)) %>%
+    mutate(date_hourly = round(datetime, units = "hours")) %>% select(-datetime) %>% distinct()
+  
+  ## Merge together
+  all_pnts <- merge(all_pnts, gps_meta, by = c("ring", "date_hourly"), all.x = TRUE)
+  
+  save(all_pnts, file = paste0("Data_outputs/", spec_col[i], "_available_pnts.RData"))
+  
+  print(paste0(spec_col[i], " complete! ", 4-i, " more to go."))
+  
+}

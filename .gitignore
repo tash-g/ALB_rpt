@@ -7,4 +7,7 @@ Data_inputs/bba_kerguelen_sst.grib
 Data_outputs/
 Workshop/
 Data_env/
-
+Condor/
+Collaborators/
+Data_inputs/
+Figures/

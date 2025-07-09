@@ -44,15 +44,14 @@ select <- dplyr::select
 # Load the data -----------------------------------------------------------
 
 # Set parameters
-colony <- "bi" # cro bi ker
-my_species <- "waal" # waal bba
+colony <- "ker" # cro bi ker
+my_species <- "bba" # waal bba
 
 colony_exp <- ifelse(colony == "ker", "kerguelen",
                      ifelse(colony == "cro", "crozet",
                             "birdis"))
 
-
-load(paste0("Data_inputs/", my_species, "_", colony_exp, "_sst-bathy-chla_data.RData"))
+load(paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_data.RData"))
 
 # ______________________________ ####
 
@@ -63,15 +62,34 @@ load(paste0("Data_inputs/", my_species, "_", colony_exp, "_sst-bathy-chla_data.R
 pnts_all %<>%
   mutate(sst = SST - 273.15,
          sst_scaled = scale(sst),
-         bathy_scaled = scale(bathy),
+         #bathy_scaled = scale(bathy),
          dist_col_scaled = scale(dist_col),
          used = ifelse(presence == "used", 1, 0)) %>%
   rename(ID = ring) %>%
   select(-SST)
 
+# Remove birds with only a couple of points
+pnts_all %<>% 
+  group_by(ID, season) %>%
+  mutate(n_recs = n(),
+         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
+  filter(flag == "fine") %>%
+  select(-flag)
+
+# Remove NAs and set distance to km
+pnts_all %<>% filter(!is.na(sst) & !is.na(used) #& !is.na(bathy)
+) %>%
+  mutate(dist_col.km = dist_col/1000,
+         max_range.km = max_range/1000)
+
+# Make dummy ring_season variable
+pnts_all %<>%
+  mutate(ID_season = paste0(ID, "_", season)) 
+
+
 ### Plot habitat use --------------------------------------------------------
 
-#### SST ----------
+#### ~# SST # ----------
 
 subset_ids <- sample(unique(pnts_all$ID), 30)
 
@@ -94,7 +112,7 @@ ggplot(pnts_subset,
         axis.text.y = element_blank(),
         plot.caption = element_text(hjust = 0.5))
 
-#### Bathymetry ----------
+#### ~# Bathymetry # ----------
 
 subset_ids <- sample(unique(pnts_all$ID), 30)
 
@@ -120,8 +138,7 @@ ggplot(pnts_subset,
         plot.caption = element_text(hjust = 0.5))
 
 
-
-## Variation with distance from colony -------------------------------------
+#### Variation with distance from colony -------------------------------------
 
 # Bathymetry against maximum range
 
@@ -141,83 +158,34 @@ ggplot(med_bathy, aes(y = med_bathy, x = max_range.km)) +
 
 # * Model habitat use -------------------------------------------------------
 
-### Prepare data for models ----------------------------------------------------------
-
-# Remove birds with only a couple of points
-pnts_all %<>% 
-  group_by(ID, season) %>%
-  mutate(n_recs = n(),
-         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
-  filter(flag == "fine") %>%
-  select(-flag)
-
-# Remove NAs and set distance to km
-pnts_all %<>% filter(!is.na(sst) & !is.na(used) & !is.na(bathy)) %>%
-  mutate(dist_col.km = dist_col/1000,
-         max_range.km = max_range/1000)
-
-# Make dummy ring_season variable
-pnts_all %<>%
-  mutate(ID_season = paste0(ID, "_", season)) 
-
 ### Compute models ----------------------------------------------------------
 
-#### SST ----
+#### ~# SST # ----------
 
-system.time( sst_mod <- glmer(
+system.time( sst_mod.within <- glmer(
+  used ~ sst_scaled + phase + dist_col_scaled + (1|boutID) + # (1|season) +
+    (1 + sst_scaled|ID_season),
+  data = pnts_all,
+  family = binomial(link = "logit") )
+)
+
+summary(sst_mod.within)
+
+system.time( sst_mod.between <- glmer(
   used ~ sst_scaled + phase + dist_col_scaled + (1|boutID) + (1|season) +
-    (1 + sst_scaled|ID_season) + (1 + sst_scaled|ID),
+    (1 + sst_scaled|ID),
   data = pnts_all,
   family = binomial(link = "logit") )
 )
 
-summary(sst_mod)
-save(sst_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_glmm.RData"))
+summary(sst_mod.between)
+
+save(sst_mod.within, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_scaled_within_glmm.RData"))
+save(sst_mod.between, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_sst_scaled_between_glmm.RData"))
 
 
-system.time( sst_mod <- glmer(
-  used ~  sst_scaled + I(sst_scaled^2) + phase + dist_col_scaled +
-    (0 + sst_scaled|ID_season) + (0 + sst_scaled|ID),
-  data = pnts_all,
-  family = binomial(link = "logit") )
-)
 
-ggplot(pnts_all, aes(x = sst, y = used)) +
- geom_point() + 
- geom_smooth()
-
-## Diagnosis
-car::vif(sst_mod)
-
-sim_resids <- simulateResiduals(sst_mod)
-plot(sim_resids) # check: uniformity, dispersion, zero-inflation
-
-plot(fitted(sst_mod), residuals(sst_mod), xlab = "Fitted values", ylab = "Residuals")
-# check: random scatter
-
-arm::binnedplot(fitted(sst_mod), 
-           residuals(sst_mod, type = "response"), 
-           nclass = NULL, 
-           xlab = "Expected Values", 
-           ylab = "Average residual", 
-           main = "Binned residual plot", 
-           cex.pts = 0.8, 
-           col.pts = 1, 
-           col.int = "gray")
-
-overdisp_fun <- function(model) {
-  rdf <- df.residual(model)
-  rp <- residuals(model, type = "pearson")
-  chisq <- sum(rp^2)
-  c(chisq = chisq, ratio = chisq / rdf, rdf = rdf)
-}
-overdisp_fun(sst_mod)
-# check: ratio should be close to 1
-
-testZeroInflation(sim_resids)
-
-
-#### Bathymetry ----
+#### ~# Bathymetry # ----------
 system.time( bathy_mod <- glmer(
   used ~ bathy_scaled + dist_col_scaled + (1|boutID) +
     (1 + bathy_scaled|ID) + (1|season) + (1 + bathy_scaled|ID_season),
@@ -236,30 +204,47 @@ save(bathy_mod, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_ba
 
 # * Interrogate results -----------------------------------------------------
 
-habitat_var <- "sst" # set to habitat variable: sst, bathy_scaled
-fitted_mod <- loadRData(paste0("Data_outputs/", my_species, "_", colony_exp, "_", habitat_var, "_glmm.RData"))
+habitat_var <- "sst_scaled" # set to habitat variable: sst, bathy_scaled
+fitted_mod.within <- loadRData(paste0("Data_outputs/", my_species, "_", colony_exp, "_", habitat_var, "_within_glmm.RData"))
+fitted_mod.between <- loadRData(paste0("Data_outputs/", my_species, "_", colony_exp, "_", habitat_var, "_between_glmm.RData"))
+
+summary(fitted_mod.within); summary(fitted_mod.between)
 
 ### Model fit metrics: AUC, sensitivity, specificity ----
 
-model_data <- model.frame(fitted_mod)
-response <- model_data$used
+# AUC around 0.5 = essential random; closer to 1 = better fit
+get_auc(fitted_mod.within); get_auc(fitted_mod.between)
 
-predicted_probs <- predict(fitted_mod, type = "response")
-roc_obj <- roc(response, predicted_probs)
-auc_value <- auc(roc_obj)
-cat("AUC:", auc_value, "\n") # closer to 0.5 means basically random guess; want something close to 1
+# Check for correlations
+car::vif(fitted_mod.within); car::vif(fitted_mod.between)
+
+# Check for random scatter
+plot(simulateResiduals(fitted_mod.within))
+plot(simulateResiduals(fitted_mod.between))
+
+# Check for patterns and that most points are within 95% confidence intervals
+plot_binnedplot(fitted_mod.within)
+plot_binnedplot(fitted_mod.between)
+
+# Check ratio is close to 1
+overdisp_fun(fitted_mod.within); overdisp_fun(fitted_mod.between)
+
+# Check ratio: >1 may indicate zero inflation (more 0s than expected); < 1 zero deflation
+# Small P = evidence to suggest zero-inflation/deflation
+testZeroInflation(fitted_mod.within); testZeroInflation(fitted_mod.between)
+
+
 
 ### Extract & plot random effects ----
 
 ## Extract random effects
-rnd_eff_within.df <- get_rnd_effects(fitted_mod, habitat_var, "within")
-rnd_eff_between.df <- get_rnd_effects(fitted_mod, habitat_var, "between")
+rnd_eff_within.df <- get_rnd_effects(fitted_mod.within, habitat_var)
+rnd_eff_between.df <- get_rnd_effects(fitted_mod.between, habitat_var)
 
 ## Slopes & intercepts histograms
 par(mfrow = c(2,2))
 hist(rnd_eff_within.df$intercept, main = paste0("Within-individiual intercepts: ", habitat_var))
 hist(rnd_eff_within.df$slope, main = paste0("Within-individiual slopes: ", habitat_var))
-
 hist(rnd_eff_between.df$intercept, main = paste0("Between-individiual intercepts: ", habitat_var))
 hist(rnd_eff_between.df$slope, main = paste0("Between-individiual slopes: ", habitat_var))
 
@@ -272,47 +257,84 @@ habitat_range <- seq(min(pnts_all[[habitat_var]], na.rm = TRUE),
                      length.out = 100)
 
 ## Make plots
-pred_within <- plot_ind_predictions(rnd_eff_within.df, habitat_range, habitat_var, fitted_mod)
-pred_between <- plot_ind_predictions(rnd_eff_between.df, habitat_range, habitat_var, fitted_mod)
+pred_within <- plot_ind_predictions(rnd_eff_within.df, habitat_range, habitat_var, fitted_mod.within)
+pred_between <- plot_ind_predictions(rnd_eff_between.df, habitat_range, habitat_var, fitted_mod.between)
 
-pred_within <- pred_within + labs(x = "Scaled bathymetry")
-pred_between <- pred_between + labs(x = "Scaled bathymetry")
+### X-lab labeller
+x_labeller <- data.frame(var_name = c("bathy_scaled", "sst_scaled"), 
+                         label_name = c("Scaled Bathymetry (m)", "ScaledSea surface temperature (°C)"))
 
-grid.arrange(pred_within + labs(title = "Within-season"), pred_between + labs(title = "Between-season"), ncol = 2)
+pred_within <- pred_within + labs(title = "Between-season", 
+                                  x =  x_labeller$label_name[x_labeller$var_name == habitat_var])
+pred_between <- pred_between + labs(title = "Within-season",
+                                    x = x_labeller$label_name[x_labeller$var_name == habitat_var])
+
+## Output plots
+grid.arrange(pred_within, pred_between, ncol = 2)
 
 
 ### Calculate repeatability ----
-summary(fitted_mod)
+
+# Within season #
+summary(fitted_mod.within)
 
 # Residual variance
-deviance = deviance(fitted_mod)
-df_resid = df.residual(fitted_mod)
+deviance = deviance(fitted_mod.within)
+df_resid = df.residual(fitted_mod.within)
 var_resid = deviance/df_resid
 
 # Random effect variance
-var_comp <- as.data.frame(VarCorr(fitted_mod))
-var_ID_season <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == "(Intercept)" & 
+var_comp <- as.data.frame(VarCorr(fitted_mod.within))
+var_ID_season.int <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == "(Intercept)" & 
                                  is.na(var_comp$var2)]
-var_ID_season_habitat <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == habitat_var &
+var_ID_season.slope <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == habitat_var &
                                          is.na(var_comp$var2)]
-
-var_ID <- var_comp$vcov[var_comp$grp == "ID" & var_comp$var1 == "(Intercept)" &
-                          is.na(var_comp$var2)]
-var_ID_habitat <- var_comp$vcov[var_comp$grp == "ID" & var_comp$var1 == habitat_var &
-                                  is.na(var_comp$var2)]
+var_ID_season.corr <- var_comp$vcov[var_comp$grp == "ID_season" & var_comp$var1 == "(Intercept)" &
+                                       !is.na(var_comp$var2)]
 var_boutID <- var_comp$vcov[var_comp$grp == "boutID"]
 
-# Total variance
-var_total = var_ID_season + var_ID_season_habitat + var_ID + var_ID_habitat + var_boutID + var_resid
+# Total variance (covariance is multiplied by 2)
+var_total = var_ID_season.int + var_ID_season.slope + var_ID_season.corr*2 + var_boutID + var_resid
 
 # Repeatabiltiy estimats
-rep_within = var_ID_season_habitat / var_total
-rep_between = var_ID_habitat / var_total
-rep_boutID = var_boutID / var_total
+rep_within = var_ID_season.slope / var_total
+rep_boutID.within = var_boutID / var_total
 
 rep_within * 100
+rep_boutID.within * 100
+
+
+
+# Between season #
+summary(fitted_mod.between)
+
+# Residual variance
+deviance = deviance(fitted_mod.between)
+df_resid = df.residual(fitted_mod.between)
+var_resid = deviance/df_resid
+
+# Random effect variance
+var_comp <- as.data.frame(VarCorr(fitted_mod.between))
+var_ID.int <- var_comp$vcov[1]
+var_ID.slope <- var_comp$vcov[2]
+var_ID.corr <- var_comp$vcov[3]
+var_boutID <- var_comp$vcov[4]
+var_season <- var_comp$vcov[5]
+
+# Total variance (covariance is multiplied by 2)
+var_total = var_ID_season.int + var_ID_season.slope + var_ID_season.corr*2 + var_boutID + var_season + var_resid
+
+# Repeatabiltiy estimats
+rep_between = var_ID.slope / var_total
+rep_boutID.between = var_boutID / var_total
+rep_season = var_season / var_total 
+
 rep_between * 100
-rep_boutID * 100
+rep_boutID.between * 100
+rep_season*100
+
+
+
 
 
 
@@ -345,6 +367,91 @@ points(temp_sf.avail$geometry, col = "red")
 
 # ______________________________ ####
 # APPENDIX/Code graveyard -------------------------------------------------
+
+
+# Simulation approach (not working) ---------------------------------------
+
+# Create a raster of a random environmental variable
+env <- raster(nrows=100, ncols=100, xmn=col_coords$longitude-2, xmx=col_coords$longitude+2, ymn=col_coords$latitude-1,ymx=col_coords$latitude+2)
+env[] <- runif(10000, -80, 180)  
+env <- focal(env, w=matrix(1, 5, 5), mean)  
+env <- focal(env, w=matrix(1, 5, 5), mean)  
+
+# Generate random birds
+## Define class for individual birds
+ind <- setClass("ind", slots=c(x="numeric", y="numeric", opt="numeric"))  
+
+## Generate birds with differing habitat preference
+n_birds = 30
+n_iter = 100
+sim_list <- vector(mode = "list", length = n_birds)
+
+for (i in 1:n_birds) {
+  
+  my_bird <- ind(x = col_coords$longitude, y = col_coords$latitude, opt = runif(1, 0, 100)) 
+  
+  path_sim <- simulate_movement(my_bird, env, n_iter, 0.1, col_coords$latitude+1.5, 0, col_coords$longitude+1.5, 0)  
+  path_sim$ring <- sprintf("B%03d", i)
+  colnames(path_sim)[1:2] <- c("longitude", "latitude")
+  
+  sim_list[[i]] <- path_sim
+}
+
+sim_birds <- do.call("rbind", sim_list)
+
+env_rast.spdf <- as(env, "SpatialPixelsDataFrame")
+env_ras.df <- as.data.frame(env_rast.spdf)
+
+ggplot() +
+  geom_tile(data = env_ras.df, aes(x = x, y = y, fill = layer)) +
+  scale_fill_viridis_c() +
+  geom_path(data = sim_birds, aes(x = longitude, y = latitude, col = ring)) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+# Randomly sample environments for each bird & model preference
+sim_rings <- unique(sim_birds$ring)
+n_pnts = 30
+model_outputs.list <- vector(mode = "list", length = length(n_pnts))
+
+for (n in 1:n_pnts) {
+  
+  sampled.list = list()
+  
+  for (i in 1:length(sim_rings)) {
+    
+    sim_birds.subset <- sim_birds %>% filter(ring == sim_rings[i])
+    pnts_sampled = sampleRandom(env, size = n*nrow(sim_birds.subset))
+    pnts_all <- data.frame(ring = sim_rings[i],
+                           used = c(rep(1, nrow(sim_birds.subset)),
+                                    rep(0, length(pnts_sampled))),
+                           env = c(sim_birds.subset$env_value,
+                                   pnts_sampled))
+    
+    sampled.list[[i]] <- pnts_all
+    
+  }
+  
+  sample.df <- do.call("rbind", sampled.list)
+  sample.df <- na.omit(sample.df)
+  
+  hab_pref.glmm <- glmer( used ~ env + (1 + env|ring), data = sample.df,
+                          family = binomial(link = "logit") )
+  
+  glmm.summary <- summary(hab_pref.glmm)
+  glmm.varcor <- data.frame(VarCorr(hab_pref.glmm))
+  
+  stats.df <- data.frame(n_pnts = n,
+                         beta_env = glmm.summary$coefficients[2,1],
+                         p_env = glmm.summary$coefficients[2,4],
+                         slope_env = glmm.varcor[2,4])
+  
+  model_outputs.list[[n]] <- stats.df
+}
+
+ratio_comparison.df <- do.call("rbind", model_outputs.list)
+save(ratio_comparison.df, file = paste0("Data_outputs/", my_species, "_", colony, "simulated_ratio_comparison.RData"))
 
 
 # Group into bouts of searching ----

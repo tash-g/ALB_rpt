@@ -1,26 +1,295 @@
 
+# * DATA PROCESSING * -----------------------------------------------------
 
-# boot_rpt ----------------------------------------------------------------
+cut_to_breeding <- function(data, medLay, medHatch, hatchTime, broodTime) {
+  
+  # Process the data
+  data %>%
+    mutate(rs = ifelse(is.na(rs), "UNKNOWN", rs)) %>%
+    mutate(lay_date = ifelse(is.na(lay_date), paste0(season - 1, "-", medLay), as.character(lay_date)),
+           hatch_code = ifelse(is.na(hatch_date), "NEW_EST", "MEAS"),
+           hatch_date = ifelse(is.na(hatch_date) & rs != "FAILED_EGG", paste0(season, "-", medHatch), as.character(hatch_date)),
+           hatch_month = month(as.Date(hatch_date)),
+           hatch_date = ifelse(hatch_month > 9 & hatch_code == "NEW_EST", 
+                               as.character(as.Date(hatch_date) - 365), as.character(hatch_date))) %>%
+    mutate(across(c(lay_date, hatch_date, fail_date), as.Date)) %>%
+    select(-c(hatch_month)) %>%
+    mutate(flag = ifelse(!is.na(fail_date) & as.Date(datetime) >= fail_date, "flag", "fine")) %>%
+    filter(flag == "fine") %>%
+    select(-flag) %>%
+    mutate(brood_end = ifelse(!is.na(hatch_date), as.character(hatch_date + broodTime),
+                              as.character(lay_date + hatchTime))) %>%
+    mutate(brood_end = as.Date(brood_end)) %>%
+    group_by(ring, season, boutID) %>%
+    mutate(start_time = first(datetime, 1), end_time = last(datetime, 1),
+           remove = ifelse(as.Date(end_time) < lay_date - 1 | as.Date(end_time) > brood_end, "remove", "keep")) %>%
+    filter(remove == "keep") %>%
+    select(-remove) %>%
+    mutate(phase = ifelse(as.Date(datetime) < hatch_date | is.na(hatch_date), "incubation", "brooding")) %>%
+    arrange(ring, datetime) %>%
+    select(-brood_end)
+}
 
-boot_rpt <- function(n_boot, mydata, myformula) {
+
+
+label_breeding <- function(data, medLay, medHatch) {
+  
+  # Process the data
+  data %>%
+    mutate(rs = ifelse(is.na(rs), "UNKNOWN", rs)) %>%
+    mutate(lay_date = ifelse(is.na(lay_date), paste0(season - 1, "-", medLay), as.character(lay_date)),
+           hatch_code = ifelse(is.na(hatch_date), "NEW_EST", "MEAS"),
+           hatch_date = ifelse(is.na(hatch_date) & rs != "FAILED_EGG", paste0(season, "-", medHatch), as.character(hatch_date)),
+           hatch_month = month(as.Date(hatch_date)),
+           hatch_date = ifelse(hatch_month > 9 & hatch_code == "NEW_EST", 
+                               as.character(as.Date(hatch_date) - 365), as.character(hatch_date))) %>%
+    mutate(across(c(lay_date, hatch_date, fail_date), as.Date)) %>%
+    select(-c(hatch_month)) %>%
+    mutate(flag = ifelse(!is.na(fail_date) & as.Date(datetime) >= fail_date, "flag", "fine")) %>%
+    filter(flag == "fine") %>%
+    select(-flag) %>%
+    mutate(phase = ifelse(as.Date(datetime) < hatch_date | is.na(hatch_date), "incubation", "brooding")) %>%
+    arrange(ring, datetime) 
+}
+
+
+
+
+
+loadRData <- function(fileName){
+  #loads an RData file, and returns it
+  load(fileName)
+  get(ls()[ls() != "fileName"])
+}
+
+
+
+
+
+# * MODEL DIAGNOSES * -----------------------------------------------------
+
+get_auc <- function(model) {
+  model_data <- model.frame(model)
+  response <- model_data$used
+  predicted_probs <- predict(model, type = "response")
+  roc_obj <- roc(response, predicted_probs)
+  auc_value <- auc(roc_obj)
+  return(cat("AUC:", auc_value, "\n"))
+}
+
+
+
+overdisp_fun <- function(model) {
+  rdf <- df.residual(model)
+  rp <- residuals(model, type = "pearson")
+  chisq <- sum(rp^2)
+  c(chisq = chisq, ratio = chisq / rdf, rdf = rdf)
+}
+
+
+
+plot_binnedplot <- function(model) {
+  
+  require(arm)
+  
+  myplot <- binnedplot(fitted(model), 
+                       residuals(model, type = "response"), 
+                       nclass = NULL, 
+                       xlab = "Expected Values", 
+                       ylab = "Average residual", 
+                       main = "Binned residual plot", 
+                       cex.pts = 0.8, 
+                       col.pts = 1, 
+                       col.int = "gray")
+  
+}
+
+
+
+
+# * MODEL OUTPUTS * -------------------------------------------------------
+
+
+
+extract_output.lmm <- function(model, ci_level = 0.95) {
+  # Get the critical value for the specified CI level
+  z <- qnorm(1 - (1 - ci_level) / 2)
+  
+  # Extract fixed effects summary
+  fe_summary <- summary(model)$coefficients
+  
+  # Convert to data frame
+  fixed_effects_df <- as.data.frame(fe_summary)
+  colnames(fixed_effects_df) <- c("Estimate", "Std_Error", "df", "t_value", "p_value")
+  
+  # Calculate confidence intervals
+  fixed_effects_df$CI_lower <- fixed_effects_df$Estimate - z * fixed_effects_df$Std_Error
+  fixed_effects_df$CI_upper <- fixed_effects_df$Estimate + z * fixed_effects_df$Std_Error
+  
+  # Add rownames as a column for term names
+  fixed_effects_df$Term <- rownames(fixed_effects_df)
+  rownames(fixed_effects_df) <- NULL
+  
+  # Reorder columns
+  fixed_effects_df <- fixed_effects_df[, c("Term", "Estimate", "Std_Error", "df", "t_value", "p_value", "CI_lower", "CI_upper")]
+  
+  return(fixed_effects_df)
+}
+
+
+extract_output.lm <- function(model, ci_level = 0.95) {
+  # Get the critical value for the specified CI level
+  z <- qnorm(1 - (1 - ci_level) / 2)
+  
+  # Extract fixed effects summary
+  fe_summary <- summary(model)$coefficients
+  
+  # Convert to data frame
+  fixed_effects_df <- as.data.frame(fe_summary)
+  colnames(fixed_effects_df) <- c("Estimate", "Std_Error", "t_value", "p_value")
+  
+  # Calculate confidence intervals
+  fixed_effects_df$CI_lower <- fixed_effects_df$Estimate - z * fixed_effects_df$Std_Error
+  fixed_effects_df$CI_upper <- fixed_effects_df$Estimate + z * fixed_effects_df$Std_Error
+  
+  # Add rownames as a column for term names
+  fixed_effects_df$Term <- rownames(fixed_effects_df)
+  rownames(fixed_effects_df) <- NULL
+  
+  # Reorder columns
+  fixed_effects_df <- fixed_effects_df[, c("Term", "Estimate", "Std_Error", "t_value", "p_value", "CI_lower", "CI_upper")]
+  
+  return(fixed_effects_df)
+}
+
+
+# Helper function to extract emmeans
+# get_emmeans <- function(model, by, extra_info) {
+#   emmeans(model, reformulate(by)) %>%
+#     as.data.frame() %>%
+#     mutate(across(everything(), ~.)) %>%
+#     bind_cols(extra_info) %>%
+#     relocate(names(extra_info), .before = 1)
+# }
+
+# Helper function to extract summary output
+# get_summary_out <- function(model, model_name, extra_info, varcor = NULL) {
+#   s <- summary(model)
+#   coefs <- s$coefficients
+#   out <- data.frame(
+#     intercept     = coefs[1, 1],
+#     intercept_sd  = coefs[1, 2],
+#     estimate      = coefs[2, 1],
+#     se            = coefs[2, 2],
+#     df            = ifelse("df" %in% colnames(coefs), coefs[2, "df"], NA),
+#     t_value       = coefs[2, "t value"],
+#     p_value       = coefs[2, "Pr(>|t|)"],
+#     intercept_var = if (!is.null(varcor)) varcor$vcov[1] else NA,
+#     resid_var     = if (!is.null(varcor)) varcor$vcov[nrow(varcor)] else NA
+#   ) %>% mutate(model = model_name)
+#   bind_cols(extra_info, out)
+# }
+
+# * PLOTTING FUNCTIONS * --------------------------------------------------
+
+# Plot individual responses to habitat
+
+plot_ind_predictions <- function(rnd_eff, hab_range, hab_var, mod_fit) {
+  
+  predictions <- expand.grid(ID = rnd_eff$ID, habitat_val = hab_range)
+  
+  ## Merge in slope/intercept
+  predictions <- merge(predictions, rnd_eff, by = "ID", all.x = T)
+  
+  predictions$logit <- predictions$intercept + predictions$slope * predictions$habitat_val
+  predictions$probability <- 1 / (1 + exp(-predictions$logit))  
+  
+  ## Get global predictions
+  global_intercept <- fixef(mod_fit)["(Intercept)"]
+  global_slope <- fixef(mod_fit)[[hab_var]]
+  
+  predictions.global <- data.frame(habitat_val = hab_range)
+  predictions.global$logit <- global_intercept + global_slope * predictions.global$habitat_val
+  predictions.global$probability <- 1 / (1 + exp(-predictions.global$logit))  
+  
+  ## Plot
+  pred_plot <- ggplot() +
+    geom_line(data = predictions, aes(x = habitat_val, y = probability, colour = ID), alpha = 0.6) +
+    geom_line(data = predictions.global, aes(x = habitat_val, y = probability), col = "black",
+              linetype = "dashed", linewidth = 1) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    labs(y = "Probability of use")
+  
+  return(pred_plot)
+  
+}
+
+
+
+save_plot <- function(plot, filename, width = 5, height = 4) {
+  png(file = filename, width = width, height = height, units = "in", res = 600)
+  print(plot)
+  dev.off() }
+
+
+
+# * REPEATABILITY CALCULATIONS * ------------------------------------------
+
+ # n_boot = 1000
+ # mydata = rep_data.bba.sub
+ # myformula = formula
+
+boot_rpt <- function(n_boot, mydata, myformula, nophase = FALSE) {
+  
+  require(dplyr); require(lme4)
   
   boot_repeatability.annual <- numeric(n_boot)
   boot_repeatability.within <- numeric(n_boot)
   boot_repeatability.between <- numeric(n_boot)
   
+  response_var <- all.vars(as.formula(myformula))[1]
+  
+  # Get unique ring IDs
+  unique_rings <- unique(mydata$ring)
+  
+  pb <- txtProgressBar(min = 0, max = n_boot, style = 3)
+  
   for (i in 1:n_boot) {
     
+    #print(paste("Bootstrap iteration:", i))
+    setTxtProgressBar(pb, i)
+    
+    boot_rings <- sample(unique_rings, replace = TRUE)
+    
     # Resample data with replacement
-    boot_data <- mydata[sample(nrow(mydata), replace = TRUE), ]
+    boot_data <- do.call(rbind, lapply(boot_rings, function(r) {
+      mydata[mydata$ring == r, ]
+    }))
+    
+    boot_data <- boot_data[!is.na(boot_data[[response_var]]), ]
+    
+    ## Resample if end up with all one colony, or all one phase (unless nophase = TRUE)
+    while(n_distinct(boot_data$colony) < 2 | (!nophase && n_distinct(boot_data$phase) < 2)) {
+      
+      boot_rings <- sample(unique_rings, replace = TRUE)
+      
+      boot_data <- do.call(rbind, lapply(boot_rings, function(r) {
+        mydata[mydata$ring == r, ]
+      }))
+      
+      boot_data <- boot_data[!is.na(boot_data[[response_var]]), ]
+
+    }
     
     # Refit the model
-    boot_model <- suppressMessages(lmer(formula, data = boot_data))
+    boot_model <- suppressMessages(lmer(myformula, data = boot_data))
     
     # Extract variance components for bootstrapped model
     boot_var_comp <- as.data.frame(VarCorr(boot_model))
     boot_ring_var <- boot_var_comp$vcov[boot_var_comp$grp == "ring"]
     boot_season_var <- boot_var_comp$vcov[boot_var_comp$grp == "season"]
-    boot_ring_season_var <- boot_var_comp$vcov[boot_var_comp$grp == "ring:season"]
+    boot_ring_season_var <- boot_var_comp$vcov[boot_var_comp$grp == "ring_season"]
     boot_residual_var <- attr(VarCorr(boot_model), "sc")^2
     
     # Calculate within-season repeatability for this bootstrap sample
@@ -28,6 +297,8 @@ boot_rpt <- function(n_boot, mydata, myformula) {
     boot_repeatability.within[i] <- boot_ring_season_var / (boot_ring_var + boot_season_var + boot_ring_season_var + boot_residual_var)
     boot_repeatability.between[i] <- boot_ring_var / (boot_ring_var + boot_season_var + boot_ring_season_var + boot_residual_var)
   }
+  
+  close(pb)
   
   # Calculate 95% confidence intervals
   rpt_cis <- list(
@@ -67,42 +338,7 @@ boot_rpt <- function(n_boot, mydata, myformula) {
 }
 
 
-# cut_to_breeding ---------------------------------------------------------
 
-cut_to_breeding <- function(data, medLay, medHatch, hatchTime, broodTime) {
-  
-  # Process the data
-  data %>%
-    mutate(rs = ifelse(is.na(rs), "UNKNOWN", rs)) %>%
-    mutate(lay_date = ifelse(is.na(lay_date), paste0(season - 1, "-", medLay), as.character(lay_date)),
-           hatch_code = ifelse(is.na(hatch_date), "NEW_EST", "MEAS"),
-           hatch_date = ifelse(is.na(hatch_date) & rs != "FAILED_EGG", paste0(season, "-", medHatch), as.character(hatch_date)),
-           hatch_month = month(as.Date(hatch_date)),
-           hatch_date = ifelse(hatch_month > 9 & hatch_code == "NEW_EST", 
-                               as.character(as.Date(hatch_date) - 365), as.character(hatch_date))) %>%
-    mutate(across(c(lay_date, hatch_date, fail_date), as.Date)) %>%
-    select(-c(hatch_month)) %>%
-    mutate(flag = ifelse(!is.na(fail_date) & as.Date(datetime) >= fail_date, "flag", "fine")) %>%
-    filter(flag == "fine") %>%
-    select(-flag) %>%
-    mutate(brood_end = ifelse(!is.na(hatch_date), as.character(hatch_date + broodTime),
-                              as.character(lay_date + hatchTime))) %>%
-    mutate(brood_end = as.Date(brood_end)) %>%
-    group_by(ring, season, boutID) %>%
-    mutate(start_time = first(datetime, 1), end_time = last(datetime, 1),
-           remove = ifelse(as.Date(end_time) < lay_date - 1 | as.Date(end_time) > brood_end, "remove", "keep")) %>%
-    filter(remove == "keep") %>%
-    select(-remove) %>%
-    mutate(phase = ifelse(as.Date(datetime) < hatch_date | is.na(hatch_date), "incubation", "brooding")) %>%
-    arrange(ring, datetime) %>%
-    select(-brood_end)
-}
-
-
-
-
-
-# calc_repeatability ------------------------------------------------------
 
 calc_repeatability <- function(focal_var, additional_var, additional_var2, resid_var) {
   return(focal_var / (focal_var + additional_var + additional_var2 + resid_var))
@@ -110,7 +346,6 @@ calc_repeatability <- function(focal_var, additional_var, additional_var2, resid
 
 
 
-# calc_rpt_grouped --------------------------------------------------------
 
 calc_rpt_grouped <- function(mydata, myformula, mygroup, group_levels, myspecies) {
   require(dplyr)
@@ -144,39 +379,52 @@ calc_rpt_grouped <- function(mydata, myformula, mygroup, group_levels, myspecies
 
 
 
-# extract_rpt ---------------------------------------------------
+# extract_rpt <- function(mymodel) {
+#   
+#   # Extract variance components for bootstrapped model
+#   var_comp <- as.data.frame(VarCorr(mymodel))
+#   ring_var <- var_comp$vcov[var_comp$grp == "ring"]
+#   season_var <- var_comp$vcov[var_comp$grp == "season"]
+#   ring_season_var <- var_comp$vcov[var_comp$grp == "ring_season"]
+#   residual_var <- attr(VarCorr(mymodel), "sc")^2
+#   
+#   # Calculate within-season repeatability for this bootstrap sample
+#   repeatabilities <- list(
+#     rpt_annual = season_var / (ring_var + season_var + ring_season_var + residual_var),
+#     rpt_within = ring_season_var / (ring_var + season_var + ring_season_var + residual_var),
+#     rpt_between = ring_var / (ring_var + season_var + ring_season_var + residual_var)
+#   )
+#   
+#   rpt_df <- t(data.frame(repeatabilities))
+#   colnames(rpt_df) <- "R"
+#   return(rpt_df)
+# }
 
-extract_rpt <- function(mymodel) {
-  
-  # Extract variance components for bootstrapped model
-  var_comp <- as.data.frame(VarCorr(mymodel))
+
+extract_rpt <- function(model) {
+  # Get variance components
+  var_comp <- as.data.frame(VarCorr(model))
   ring_var <- var_comp$vcov[var_comp$grp == "ring"]
   season_var <- var_comp$vcov[var_comp$grp == "season"]
-  ring_season_var <- var_comp$vcov[var_comp$grp == "ring:season"]
-  residual_var <- attr(VarCorr(mymodel), "sc")^2
+  ring_season_var <- var_comp$vcov[var_comp$grp == "ring_season"]
+  residual_var <- attr(VarCorr(model), "sc")^2
   
-  # Calculate within-season repeatability for this bootstrap sample
-  repeatabilities <- list(
-    rpt_annual = season_var / (ring_var + season_var + ring_season_var + residual_var),
-    rpt_within = ring_season_var / (ring_var + season_var + ring_season_var + residual_var),
-    rpt_between = ring_var / (ring_var + season_var + ring_season_var + residual_var)
-  )
+  # Calculate repeatability estimates
+  rpt_annual <- season_var / (ring_var + season_var + ring_season_var + residual_var)
+  rpt_within <- ring_season_var / (ring_var + season_var + ring_season_var + residual_var)
+  rpt_between <- ring_var / (ring_var + season_var + ring_season_var + residual_var)
   
-  rpt_df <- t(data.frame(repeatabilities))
-  colnames(rpt_df) <- "R"
-  return(rpt_df)
+  # Return the estimates as a vector
+  return(c(rpt_annual, rpt_within, rpt_between))
 }
 
-
-
-# extract_var  ------------------------------------------------------------
 
 extract_var <- function(mymodel) {
   
   my_vars <- as.data.frame(VarCorr(mymodel))
-  var.annual = my_vars$vcov[3]
-  var.within = my_vars$vcov[1]
-  var.between = my_vars$vcov[2]
+  annual_var = my_vars$vcov[3]
+  within_var = my_vars$vcov[1]
+  between_var = my_vars$vcov[2]
   
   my_output <- data.frame(rbind(annual_var, within_var, between_var))
   colnames(my_output) <- "var"
@@ -185,7 +433,7 @@ extract_var <- function(mymodel) {
 }
 
 
-# extract_variances.brms -------------------------------------------------------
+
 
 extract_variances.brms <- function(model) {
   
@@ -217,35 +465,28 @@ extract_variances.brms <- function(model) {
 }
 
 
-# get_rnd_effects -------------------------------------------------------------------------
 
 # Calculate random intercepts and slopes for individual/individual within season
 
-get_rnd_effects <- function(mod_fit, hab_var, level) {
+# mod_fit = mod_run.between
+# hab_var = "sst_scaled"
+
+get_rnd_effects <- function(mod_fit, hab_var) {
   
-  ID_var = ifelse(level == "within", "ID_season", "ID")
-  
-  random_effects <- ranef(mod_fit, condVar = TRUE)
-  slopes <- random_effects[[ID_var]][habitat_var]  
-  intercepts <- random_effects[[ID_var]]["(Intercept)"]        
+  random_effects <- ranef(mod_fit, condVar = TRUE)[[1]][1]
+  slopes <- random_effects[[names(random_effects)[1]]][[hab_var]]
+  intercepts <- random_effects[[names(random_effects)[1]]][["(Intercept)"]]        
   
   rnd_eff.df <- data.frame(cbind(intercepts, slopes))
   colnames(rnd_eff.df) <- c("intercept", "slope")
-  rnd_eff.df$ID = rownames(random_effects[[ID_var]])
+  rnd_eff.df$ID = rownames(random_effects[[1]])
   rownames(rnd_eff.df) <- NULL
-  rnd_eff.df$level = level
   
   return(rnd_eff.df)
 }
 
-# loadRdata -----------------------------------------------
-loadRData <- function(fileName){
-  #loads an RData file, and returns it
-  load(fileName)
-  get(ls()[ls() != "fileName"])
-}
 
-# lrt_test ----------------------------------------------------------------
+
 
 lrt_test <- function(myformula, rndmeff, mycov, mydata, myspecies) {
   
@@ -281,7 +522,15 @@ lrt_test <- function(myformula, rndmeff, mycov, mydata, myspecies) {
   
 }
 
-# perm_repeatability ------------------------------------------------------
+
+
+# n_perm = 1000
+# mydata =rep_bba
+# myformula =formula
+# rptannual =repeatability_output.bba$est[1]
+# rptwithin = repeatability_output.bba$est[2]
+# rptbetween =repeatability_output.bba$est[3]
+
 
 perm_repeatability <- function(n_perm, mydata, myformula, rptannual, rptwithin, rptbetween) {
   
@@ -319,47 +568,346 @@ perm_repeatability <- function(n_perm, mydata, myformula, rptannual, rptwithin, 
 }
 
 
-# plot_ind_predictions ----------------------------------------------------
 
-# Plot individual responses to habitat
 
-plot_ind_predictions <- function(rnd_eff, hab_range, hab_var, mod_fit) {
+
+
+# * SPATIAL FUNCTIONS * ---------------------------------------------------
+
+## Function to calculate difference in angular bearing
+angle_diff <- function(b1, b2) {
+  abs_diff <- abs(b1 - b2) # %% 360
+  return(ifelse(abs_diff > 180, 360 - abs_diff, abs_diff))
+}
+
+
+
+angle_diff_rad <- function(b1, b2) {
+  abs_diff <- abs(b1 - b2) %% (2 * pi)  # Ensure values wrap correctly
+  return(ifelse(abs_diff > pi, (2 * pi) - abs_diff, abs_diff))  # Ensure values are in [0, pi]
+}
+
+
+
+convert_to_spdf <- function(trip, projection) {
   
-  predictions <- expand.grid(ID = rnd_eff$ID, habitat_val = hab_range)
+  mytrip <- trip %>% ungroup() %>% select(c(longitude, latitude))
+  coordinates(mytrip) <- ~longitude+latitude
+  proj4string(mytrip) <- proj.dec
+  return(mytrip)
+}
+
+
+bearing_from_col <- function(trip, col_lon, col_lat) {
   
-  ## Merge in slope/intercept
-  predictions <- merge(predictions, rnd_eff, by = "ID", all.x = T)
+  max_location <- trip %>% filter(dist_col == max(dist_col, na.rm = T)) %>%
+    ungroup() %>% select(c(longitude, latitude)) %>% filter(row_number() ==1)
   
-  predictions$logit <- predictions$intercept + predictions$slope * predictions$habitat_val
-  predictions$probability <- 1 / (1 + exp(-predictions$logit))  
-  
-  ## Get global predictions
-  global_intercept <- fixef(mod_fit)["(Intercept)"]
-  global_slope <- fixef(mod_fit)[[hab_var]]
-  
-  predictions.global <- data.frame(habitat_val = hab_range)
-  predictions.global$logit <- global_intercept + global_slope * predictions.global$habitat_val
-  predictions.global$probability <- 1 / (1 + exp(-predictions.global$logit))  
-  
-  ## Plot
-  pred_plot <- ggplot() +
-    geom_line(data = predictions, aes(x = habitat_val, y = probability, colour = ID), alpha = 0.6) +
-    geom_line(data = predictions.global, aes(x = habitat_val, y = probability), col = "black",
-              linetype = "dashed", linewidth = 1) +
-    theme_bw() +
-    theme(legend.position = "none") +
-    labs(x = "Sea surface temperature (°C)", 
-         y = "Probability of use")
-  
-  return(pred_plot)
+  return(bearing(c(col_lon, col_lat),
+                 c(max_location$longitude, max_location$latitude)))
   
 }
 
 
-# sample_points -----------------------------------------------------------
+# Compute differences and remove any that occur in different breeding phases
+calculate_bearing_diffs <- function(df, bearing_col_name, comparison_type = c("within", "between"), output_col_name) {
+  
+  comparison_type <- match.arg(comparison_type)
+  bearing_col_sym <- rlang::sym(bearing_col_name)
+  
+  # Select relevant columns
+  df <- df %>%
+    ungroup() %>%
+    select(ring, boutID, season, phase, !!bearing_col_sym)
+  
+  if (comparison_type == "within") {
+    
+    out <- df %>%
+      group_by(ring) %>%
+      filter(n() >= 2) %>%
+      summarise(
+        trip_comparisons = list(combn(boutID, 2, paste, collapse = " vs ")),
+        bearing_diff_tmp = list(combn(!!bearing_col_sym, 2, function(x) angle_diff(x[1], x[2]))),
+        .groups = "drop" ) %>%
+      unnest(cols = c(trip_comparisons, bearing_diff_tmp)) %>%
+      rename(!!output_col_name := bearing_diff_tmp) %>%
+      separate(trip_comparisons, into = c("tripID_1", "tripID_2"), sep = " vs ") %>%
+      left_join(df, by = c("ring", "tripID_1" = "boutID")) %>%
+      rename(season_1 = season, phase_1 = phase) %>%
+      left_join(df, by = c("ring", "tripID_2" = "boutID")) %>%
+      rename(season_2 = season, phase_2 = phase) %>%
+      mutate(
+        comp_ind = "within_ring",
+        comp_season = ifelse(season_1 == season_2, "within_season", "between_season"),
+        comp_phase = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")
+      ) %>%
+      filter(comp_phase == "same_phase") %>%
+      mutate(ring_2 = ring) %>%
+      rename(ring_1 = ring) %>%
+      select(ring_1, tripID_1, season_1, ring_2, tripID_2, season_2, 
+             !!output_col_name, comp_ind, comp_season)
+    
+  } else if (comparison_type == "between") {
+    
+    df1 <- df %>%
+      rename_with(~ paste0(.x, "_1"))
+    
+    df2 <- df %>%
+      rename_with(~ paste0(.x, "_2"))
+    
+    out <- merge(df1, df2, by = NULL) %>%
+      filter(ring_1 != ring_2, phase_1 == phase_2) %>%
+      mutate(
+        !!output_col_name := angle_diff(!!rlang::sym(paste0(bearing_col_name, "_1")),
+                                        !!rlang::sym(paste0(bearing_col_name, "_2"))),
+        comp_ind = "between_ring",
+        comp_season = ifelse(season_1 == season_2, "within_season", "between_season") ) %>%
+      mutate(
+        tripID_1.tmp = paste0(ring_1, boutID_1),
+        tripID_2.tmp = paste0(ring_2, boutID_2),
+        comp_ID = paste0(pmin(tripID_1.tmp, tripID_2.tmp), "_", pmax(tripID_1.tmp, tripID_2.tmp)) ) %>%
+      distinct(comp_ID, .keep_all = TRUE) %>%
+      select(ring_1, boutID_1, season_1,
+             ring_2, boutID_2, season_2,
+             !!output_col_name, comp_ind, comp_season) %>%
+      rename(tripID_1 = boutID_1, tripID_2 = boutID_2)
+  }
+  
+  return(out)
+}
+
+
+# df = trip_bearings
+# bearing_col_name = "bearing_col"
+# comparison_type = "within"
+# output_col_name = "bearing_diffs"
+
+calculate_bearing_diffs_sex <- function(df, 
+                                    bearing_col_name, 
+                                    comparison_type = c("within", "between"), 
+                                    output_col_name) {
+  
+  comparison_type <- match.arg(comparison_type)
+  bearing_col_sym <- rlang::sym(bearing_col_name)
+  
+  # Select relevant columns
+  df <- df %>%
+    ungroup() %>%
+    select(ring, boutID, season, phase, sex, !!bearing_col_sym)
+  
+  if (comparison_type == "within") {
+    
+    out <- df %>%
+      group_by(ring) %>%
+      filter(n() >= 2) %>%
+      summarise(
+        sex = first(sex),  # Keep sex info
+        trip_comparisons = list(combn(boutID, 2, paste, collapse = " vs ")),
+        bearing_diff_tmp = list(combn(!!bearing_col_sym, 2, function(x) angle_diff(x[1], x[2]))),
+        .groups = "drop" ) %>%
+      unnest(cols = c(trip_comparisons, bearing_diff_tmp)) %>%
+      rename(!!output_col_name := bearing_diff_tmp) %>%
+      separate(trip_comparisons, into = c("tripID_1", "tripID_2"), sep = " vs ") %>%
+      left_join(df, by = c("ring", "tripID_1" = "boutID")) %>%
+      rename(season_1 = season, phase_1 = phase, sex_1 = sex.x) %>%
+      left_join(df, by = c("ring", "tripID_2" = "boutID")) %>%
+      rename(season_2 = season, phase_2 = phase, sex_2 = sex) %>%
+      mutate(
+        comp_ind = "within_ring",
+        comp_season = ifelse(season_1 == season_2, "within_season", "between_season"),
+        comp_phase = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")
+      ) %>%
+      filter(comp_phase == "same_phase", sex_1 == sex_2) %>%  # safety check
+      mutate(ring_2 = ring) %>%
+      rename(ring_1 = ring) %>%
+      select(ring_1, tripID_1, season_1, sex_1,
+             ring_2, tripID_2, season_2, sex_2,
+             !!output_col_name, comp_ind, comp_season)
+    
+  } else if (comparison_type == "between") {
+    
+    df1 <- df %>%
+      rename_with(~ paste0(.x, "_1"))
+    
+    df2 <- df %>%
+      rename_with(~ paste0(.x, "_2"))
+    
+    out <- merge(df1, df2, by = NULL) %>%
+      filter(ring_1 != ring_2,
+             phase_1 == phase_2,
+             sex_1 == sex_2) %>%
+      mutate(
+        !!output_col_name := angle_diff(!!rlang::sym(paste0(bearing_col_name, "_1")),
+                                        !!rlang::sym(paste0(bearing_col_name, "_2"))),
+        comp_ind = "between_ring",
+        comp_season = ifelse(season_1 == season_2, "within_season", "between_season") ) %>%
+      mutate(
+        tripID_1.tmp = paste0(ring_1, boutID_1),
+        tripID_2.tmp = paste0(ring_2, boutID_2),
+        comp_ID = paste0(pmin(tripID_1.tmp, tripID_2.tmp), "_", pmax(tripID_1.tmp, tripID_2.tmp)) ) %>%
+      distinct(comp_ID, .keep_all = TRUE) %>%
+      select(ring_1, boutID_1, season_1, sex_1,
+             ring_2, boutID_2, season_2, sex_2,
+             !!output_col_name, comp_ind, comp_season) %>%
+      rename(tripID_1 = boutID_1, tripID_2 = boutID_2)
+  }
+  
+  return(out)
+}
+
+
+
+
+
+
+calculate_within_bearing_diffs.comparison <- function(df, bearing_col_name, output_col_name = "bearing_diff") {
+  
+  # Convert string column name to symbol
+  bearing_col_sym <- rlang::sym(bearing_col_name)
+  
+  df %>%
+    group_by(ring) %>%
+    filter(n() >= 2) %>%  # Ensure at least two trips per individual
+    summarise(
+      trip_comparisons = list(combn(boutID, 2, paste, collapse = " vs ")),
+      bearing_diff_tmp = list(combn(!!bearing_col_sym, 2, function(x) angle_diff(x[1], x[2]))),
+      .groups = "drop"
+    ) %>%
+    unnest(cols = c(trip_comparisons, bearing_diff_tmp)) %>%
+    rename(!!output_col_name := bearing_diff_tmp) %>%
+    separate(trip_comparisons, into = c("tripID_1", "tripID_2"), sep = " vs ") %>%
+    left_join(df %>% select(ring, boutID, season, phase), 
+              by = c("ring", "tripID_1" = "boutID")) %>%
+    rename(season_1 = season, phase_1 = phase) %>%
+    left_join(df %>% select(ring, boutID, season, phase), 
+              by = c("ring", "tripID_2" = "boutID")) %>%
+    rename(season_2 = season, phase_2 = phase) %>%
+    mutate(
+      comp_ind = "within_ring",
+      comp_season = ifelse(season_1 == season_2, "within_season", "between_season"),
+      comp_phase = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")
+    ) %>%
+    arrange(ring, season_1, season_2) %>%
+    filter(comp_phase == "same_phase") %>%
+    select(-c(phase_1, phase_2, comp_phase)) %>%
+    mutate(ring_2 = ring) %>%
+    rename(ring_1 = ring) %>%
+    relocate(ring_1, tripID_1, season_1, ring_2, tripID_2, season_2,
+             !!output_col_name, comp_ind, comp_season) %>%
+    mutate(
+      tripID_1.tmp = paste0(ring_1, tripID_1),
+      tripID_2.tmp = paste0(ring_2, tripID_2),
+      comp_ID = paste0(pmin(tripID_1.tmp, tripID_2.tmp), "_", pmax(tripID_1.tmp, tripID_2.tmp))
+    ) %>%
+    distinct(comp_ID, .keep_all = TRUE) %>%
+    select(-c(comp_ID, tripID_1.tmp, tripID_2.tmp))
+}
+
+
+
+
+calculate_between_bearing_diffs.comparison <- function(df, bearing_cols = c("bearing_col", "bearing_OG", "bearing_for")) {
+  
+  # Expand all combinations of IDs and extract components
+  pair_df <- expand.grid(ID1 = unique(df$ID),
+                         ID2 = unique(df$ID)) %>%
+    separate(ID1, into = c("ring_1", "season_1", "dummy1", "tripID_1"), sep = "_", remove = FALSE) %>%
+    separate(ID2, into = c("ring_2", "season_2", "dummy2", "tripID_2"), sep = "_", remove = FALSE) %>%
+    select(-dummy1, -dummy2) %>%
+    mutate(
+      tripID_1 = paste0(season_1, "_trip_", tripID_1),
+      tripID_2 = paste0(season_2, "_trip_", tripID_2),
+      tripID_1.tmp = paste0(ring_1, tripID_1),
+      tripID_2.tmp = paste0(ring_2, tripID_2),
+      comp_ID = paste0(pmin(tripID_1.tmp, tripID_2.tmp), "_", pmax(tripID_1.tmp, tripID_2.tmp))
+    ) %>%
+    distinct(comp_ID, .keep_all = TRUE) %>%
+    filter(ring_1 != ring_2) %>%
+    select(-comp_ID, -tripID_1.tmp, -tripID_2.tmp)
+  
+  # Start by joining common metadata and phase for filtering
+  pair_df <- pair_df %>%
+    left_join(df %>% select(ring, boutID, phase), 
+              by = c("ring_1" = "ring", "tripID_1" = "boutID")) %>%
+    rename(phase_1 = phase) %>%
+    left_join(df %>% select(ring, boutID, phase), 
+              by = c("ring_2" = "ring", "tripID_2" = "boutID")) %>%
+    rename(phase_2 = phase) %>%
+    mutate(phase_comp = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")) %>%
+    filter(phase_comp == "same_phase") %>%
+    select(-phase_1, -phase_2, -phase_comp)
+  
+  # For each bearing column, compute angle_diff and join
+  for (col in bearing_cols) {
+    bearing_1 <- paste0(col, "_1")
+    bearing_2 <- paste0(col, "_2")
+    diff_col  <- paste0(col, ".diff")
+    
+    tmp <- pair_df %>%
+      left_join(df %>% select(ring, boutID, !!sym(col)) %>%
+                  rename(ring_1 = ring, tripID_1 = boutID, !!bearing_1 := !!sym(col)),
+                by = c("ring_1", "tripID_1")) %>%
+      left_join(df %>% select(ring, boutID, !!sym(col)) %>%
+                  rename(ring_2 = ring, tripID_2 = boutID, !!bearing_2 := !!sym(col)),
+                by = c("ring_2", "tripID_2")) %>%
+      mutate(!!diff_col := angle_diff(.data[[bearing_1]], .data[[bearing_2]])) %>%
+      select(ring_1, season_1, tripID_1, ring_2, season_2, tripID_2, !!diff_col)
+    
+    # Join the new difference column to the main df
+    pair_df <- left_join(pair_df, tmp, 
+                         by = c("ring_1", "season_1", "tripID_1", 
+                                "ring_2", "season_2", "tripID_2"))
+  }
+  
+  return(pair_df)
+}
+
+
+
+deg2rad <- function(deg) {(deg * pi) / (180)}
+
+
+
+rad2deg <- function(rad) {(rad * 180) / (pi)}
+
+
 
 # Vectorized random sampling function
-sample_points <- function(geometry, max_range, n) {
-  buffer <- st_buffer(geometry, dist = max_range[1])
-  st_sample(buffer, size = n, type = "random")
+sample_points <- function(geometry, n) {
+  st_sample(geometry, size = n, type = "random")
 }
+
+
+
+# Function to simulate movement from R blog
+simulate_movement <- function (sp, env, n, sigma, theta_x, alpha_x, theta_y, alpha_y) {  
+  track <- data.frame()  
+  track[1,1] <- sp@x  
+  track[1,2] <- sp@y  
+  for (step in 2:n) {  
+    neig <- adjacent(env,   
+                     cellFromXY(env, matrix(c(track[step-1,1],  
+                                              track[step-1,2]), 1,2)),   
+                     directions=8, pairs=FALSE )  
+    options <- data.frame()  
+    for (i in 1:length(neig)){  
+      options[i,1]<-neig[i]  
+      options[i,2]<- sp@opt - env[neig[i]]  
+    }  
+    option <- c(options[abs(na.omit(options$V2)) == min(abs(na.omit(options$V2))), 1 ],   
+                options[abs(na.omit(options$V2)) == min(abs(na.omit(options$V2))), 1 ])  
+    new_cell <- sample(option,1)  
+    new_coords <- xyFromCell(env,new_cell)  
+    lon_candidate<--9999  
+    lat_candidate<--9999  
+    
+    while ( is.na(extract(env, matrix(c(lon_candidate,lat_candidate),1,2)))) {  
+      lon_candidate <- new_coords[1]+ (sigma * rnorm(1)) + (alpha_x * ( theta_x - new_coords[1]))  
+      lat_candidate <- new_coords[2]+ (sigma * rnorm(1)) + (alpha_y * ( theta_y - new_coords[2]))  
+    }  
+    track[step,1] <- lon_candidate  
+    track[step,2] <- lat_candidate 
+    track$env_value[step] <- extract(env, cellFromXY(env, c(lon_candidate, lat_candidate)))  # Extract environmental value at new position
+  }  
+  return(track)  
+}  

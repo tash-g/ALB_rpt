@@ -22,7 +22,7 @@
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "readxl", "sf", "ggplot2", "trip", "data.table",
+packages <- c("dplyr", "magrittr", "readxl", "sf", "ggplot2", "data.table",
               "momentuHMM")
 
 # Install packages not yet installed - change lib to library path
@@ -42,8 +42,8 @@ select <- dplyr::select
 # Set parameters ===============================================================
 
 # Set colony/species
-my_colony <- "cro" # cro bi ker
-my_species <- "waal" # waal bba
+my_colony <- "bi" # cro bi ker
+my_species <- "bba" # waal bba
 
 colony_exp <- ifelse(my_colony == "ker", "kerguelen",
                      ifelse(my_colony == "cro", "crozet",
@@ -55,30 +55,18 @@ colony_exp <- ifelse(my_colony == "ker", "kerguelen",
 
 # +++++++++++++++++++++++++++++ ####
 
-# CUT DATA TO BREEDING ---------------------------------------------------------
+# CUT GLS DATA TO BREEDING ---------------------------------------------------------
 
-# Load the tracking data -------------------------------------------------------
-
-# Change directory
+# Change directory to access GLS data
 setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_foraging_proj")
 
-load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gps_labelled.RData"))
+load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gls_labelled.RData"))
 
-gps_labelled.df %<>% 
+gls_labelled.df %<>%
   mutate(ring = toupper(ring),
          ring = gsub(" ", "", ring),
-         ringYr = paste(ring, season, sep = "_"),
-         ID = paste(ring, season, boutID, sep = "_")) %>%
-  filter(!is.na(ring)) 
-
-# load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gls_labelled.RData"))
-# 
-# gls_labelled.df %<>%
-#   mutate(ring = toupper(ring),
-#          ring = gsub(" ", "", ring),
-#          ringYr = paste(ring, season, sep = "_")) %>%
-#   filter(!is.na(ring))
-
+         ringYr = paste(ring, season, sep = "_")) %>%
+  filter(!is.na(ring))
 
 
 # Load meta data -------------------------------------------------------------
@@ -101,8 +89,6 @@ my_demo <- rbind(demoA, demoB)
 my_demo %<>% group_by(ring, season) %>% tidyr::fill(everything(), .direction = 'updown') %>% distinct()
 
 
-# Change directory back
-setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
 
 # Manual breeding dates ------------------------------------------------------
 
@@ -135,30 +121,26 @@ my_demo %<>% select(ring, season, rs, lay_date, hatch_date, fail_date) %>%
   mutate(season = as.numeric(season)) %>% distinct()
 my_demo <- my_demo[, .SD[sample(.N, 1)], by = .(ring, season)]
 
-setDT(gps_labelled.df)
-#setDT(gls_labelled.df)
+setDT(gls_labelled.df)
 
 # Merge using data.table
-gps_labelled.df <- merge(gps_labelled.df, my_demo, by = c("ring", "season"), all.x = T)
-#gls_labelled.df <- merge(gls_labelled.df, my_demo, by = c("ring", "season"), all.x = T)
+gls_labelled.df <- merge(gls_labelled.df, my_demo, by = c("ring", "season"), all.x = T)
 
 ## Cut to breeding
 hatch_time = ifelse(my_species == "bba", 101, 121)
-brood_time = ifelse(my_species == "bba", 38, 48)
+brood_time = ifelse(my_species == "bba", 38, 48) # brooding ends 22/01
 
-#gls_labelled.df %<>% rename(boutID = tripID)
+gls_labelled.df %<>% rename(boutID = tripID)
 
-gps_labelled.df <- cut_to_breeding(gps_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
-#gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
+gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
 
-save(gps_labelled.df, file = paste0("Data_inputs/", my_species, "_", colony_exp, "_gps_labelled_subset.RData"))
-#save(gls_labelled.df, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_gls_labelled_subset.RData"))
+save(gls_labelled.df, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_gls_labelled_subset.RData"))
 
 # +++++++++++++++++++++++++++++ ####
 
 # PROCESS GPS DATA -------------------------------------------------------------
 
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_gps_labelled_subset.RData"))
+load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gps_labelled_subset.RData"))
 
 ## Calculate landings using speed filter ---------------------------------------
 
@@ -183,6 +165,12 @@ gps_labelled.df %<>%
          landing = ifelse(is.na(landing), "none", landing),
          behav_state = ifelse(calc_speed > 8.3, "transit", behav_state))
 
+
+# Calculate distance to next point
+gps_labelled.df %<>%
+  group_by(ring, boutID) %>%
+  mutate(dist_next = gcd.hf(longitude, latitude, lead(longitude), lead(latitude))) %>%
+  ungroup()
 
 ## Summarise behavioural metrics ----------------------------------------------
 
@@ -217,9 +205,8 @@ gps_full <- gps_labelled.df %>%
          transit_time.pct = (transit_time.hrs / duration.hours) * 100,
          rest_time.pct = (rest_time.hrs / duration.hours) * 100,
          total_distance.km = sum(dist_next),
-         max_distance.km = max(distances) / 1000 ) %>%
+         max_distance.km = max(dist_col) / 1000 ) %>%
   select(-c(start_date, end_date))
-
 
 
 
@@ -372,22 +359,14 @@ for (i in 1:length(all_birds)) {
 close(pb)
 trips_summary <- do.call("rbind", all_trips.list)
 trips_summary %<>% filter(duration.days <= 30 & rest_time.pct > 0 & rest_time.pct < 100)
+
+# Change directory back
+setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
+#setwd("C:/Users/ngillies/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
+
 save(trips_summary, file = paste0("Data_inputs/", my_species, "_", colony_exp, "_individual_trips_summary.RData"))
 
 
-
-# Random plots
-trips_summary %>% filter(duration.hrs > 24) %>%
-  ggplot(aes(x = duration.hrs, y = transit_time.pct)) +
-  geom_point() 
-
-trips_summary %>% filter(duration.hrs > 24) %>%
-  ggplot(aes(x = duration.hrs, y = rest_time.pct)) +
-  geom_point() 
-
-trips_summary %>% filter(duration.hrs > 24) %>%
-  ggplot(aes(x = transit_time.hrs, y = transitions)) +
-  geom_point() 
 
 
 
