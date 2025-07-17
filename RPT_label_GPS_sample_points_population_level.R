@@ -49,12 +49,8 @@ select <- dplyr::select
 # Load the data -----------------------------------------------------------
 
 # Set parameters
-colony <- "bi" # cro bi ker
-my_species <- "bba" # waal bba
-
-colony_exp <- ifelse(colony == "ker", "kerguelen",
-                     ifelse(colony == "cro", "crozet",
-                            "birdis"))
+colony_exp <- "birdis" # crozer birdis kerguelen
+my_species <- "waal" # waal bba
 
 # Load the GPS data
 gps_files <- list.files("Data_inputs/", pattern = paste0(my_species, "_", colony_exp, "_gps"))
@@ -194,7 +190,7 @@ save(my_gps, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_label
 load("Data_inputs/breeding_dates.RData")
 load("Data_inputs/ind_meta.RData")
 
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_birdis", "waal_crozet")
+spec_col <- c("bba_kerguelen", "bba_birdis", "waal_birdis")#, "waal_crozet")
 ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
 bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
 cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)

@@ -14,6 +14,8 @@ output:
   - Kerguelen = ker
   - Chlorophyll = chl
 
+## SETUP
+
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 # Functions for GPS processing and plotting
@@ -1088,21 +1090,40 @@ ggarrange(plot_pop.linear, plot_pop.quad,
 # Do some data cleaning
 load("Data_inputs/waal_birdis_sst-bathy-chla_data_population_level.RData")
 
-## Remove birds with only a couple of points
+## Remove NAs and set distance to km; remove birds with too few data points (i.e. fewer than two day's worth of data)
 pnts_all %<>% 
+  filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
+  mutate(dist_col.km = dist_col/1000) %>%
   rename(ID = ring) %>%
   select(-index) %>%
   mutate(ID_season = paste0(ID, "_", season),
          tripID = paste0(ID, "_", tripID))  %>%
-  group_by(ID, year) %>%
-  mutate(n_recs = n(),
-         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
+  group_by(ID) %>%
+  mutate(n_recs = n_distinct(date_hourly),
+         flag = ifelse(n_recs < 48, "flag", "fine")) %>%
   filter(flag == "fine") %>%
-  select(-flag)
+  select(-c(flag, n_recs)) 
 
-## Remove NAs and set distance to km
-pnts_all %<>% filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
-  mutate(dist_col.km = dist_col/1000)
+## Resample to maintain used:available ratio
+pnts_all %<>%
+  group_by(ID, date_hourly) %>%
+  group_modify(~ {
+    used_pts <- .x %>% filter(used == 1)
+    avail_pts <- .x %>% filter(used == 0)
+    # How many used?
+    n_used <- nrow(used_pts)
+    target_avail <- n_used * 6
+    # If enough available points
+    if (nrow(avail_pts) >= target_avail) {
+      avail_pts <- avail_pts %>% slice_sample(n = target_avail)
+      bind_rows(used_pts, avail_pts)
+    } else {
+      # Not enough: drop the whole group
+      tibble()
+    }
+  }) %>%
+  ungroup()
+
 
 ## Scale the variables
 pnts_all %<>%
@@ -1116,6 +1137,16 @@ pnts_all %<>%
                          as.numeric(year(date_hourly)) + 1 ),
          sst_scaled2 = sst_scaled^2,
                      bathy_scaled2 = bathy_scaled^2)
+
+# used_avail_summary <- pnts_all %>%
+#   group_by(ID) %>%
+#   summarise(
+#     used_count = sum(used == 1),
+#     avail_count = sum(used == 0),
+#     total = n(),
+#     used_ratio = used_count / total )
+# 
+# hist(used_avail_summary$used_ratio)
 
 save(pnts_all, file = "Data_inputs/waal_birdis_habitat_data.RData")
 
@@ -1232,6 +1263,11 @@ chl_ranef.plot <- plots[[2]] +
 sst_ranef.plot <- plots[[3]] + 
   theme(axis.title.y = element_blank())
 
+waal_birdis_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+          ncol = 3)
+waal_birdis_used_plot <- annotate_figure(waal_birdis_used_plot, top = text_grob("WAAL - Bird Island", face = "bold", size = 14))
+save(waal_birdis_used_plot, file = "Data_outputs/waal_birdis_used_plot.RData")
+
 png(filename = "Figures//waal_birdis_habitat_used_ranef_plot.png", width = 14, height = 6, units = "in", res = 600)
 ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
@@ -1285,7 +1321,7 @@ There are only 7 individual WAAL at Bird Island with \> 1 season of data, so I d
 tok <- Sys.time()
 waal_birdis_glmm.between_sst <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-         (1 + sst_scaled | ID ) + (1 | tripID),
+         (1 | ID ) + (0 + sst_scaled | ID ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 tik <- Sys.time()
@@ -1297,7 +1333,7 @@ rm(waal_birdis_glmm.between_sst); gc()
 
 waal_birdis_glmm.between_bathy <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + bathy_scaled | ID ) + (1 | tripID),
+        (1 | ID ) + (0 + bathy_scaled | ID ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1307,7 +1343,7 @@ rm(waal_birdis_glmm.between_bathy); gc()
 
 waal_birdis_glmm.between_chl <-  glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + chl_scaled | ID ) + (1 | tripID),
+        (1 | ID ) + (0 + chl_scaled | ID ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1372,7 +1408,6 @@ load("Data_outputs/waal_birdis_glmm_between_sst.RData")
 load("Data_outputs/waal_birdis_glmm_between_bathy.RData")
 load("Data_outputs/waal_birdis_glmm_between_chl.RData")
 
-
 # Plot effects
 pred_plot.sst <- plot(ggeffects::ggpredict(waal_birdis_glmm.between_sst, terms = "sst_scaled [all]", type = "fixed"))
 pred_plot.bathy <- plot(ggeffects::ggpredict(waal_birdis_glmm.between_bathy, terms = "bathy_scaled [all]", type = "fixed"))
@@ -1393,29 +1428,6 @@ gc()
 
 ```
 
-```{r waal_birdis_random_effects_predictions }
-
-load("Data_outputs/waal_birdis_glmm_between_sst.RData")
-load("Data_outputs/waal_birdis_glmm_between_bathy.RData")
-load("Data_outputs/waal_birdis_glmm_between_chl.RData")
-
-model_info <- list(
-  between_sst =   list(model = waal_birdis_glmm.between_sst, data = pnts_all),
-  between_bathy = list(model = waal_birdis_glmm.between_bathy, data = pnts_all),
-  between_chl =   list(model = waal_birdis_glmm.between_chl, data = pnts_all),
-)
-
-env_vars = c("sst", "bathy", "chl")
-
-
-
-
-png("Figures/waal_birdis_habitat_between_random_effects.png", width = 14, height = 6, units = "in", res = 600)
-ggarrange(
-          ncol = 3, nrow = 1)
-dev.off()
-
-```
 
 ##### Conditional repeatability
 
@@ -1423,13 +1435,13 @@ Repeatability at the edges of chlorophyll is exceptionally high, but almost cert
 
 ```{r waal_birdis_calc_repeatability}
 
-oad("Data_inputs/waal_cro_habitat_data.RData")
-
-env_vars = c("sst", "bathy", "chl")
+load("Data_inputs/waal_birdis_habitat_data.RData")
 
 # Calculate conditional repeatability ------
 
 ## Store envronmental variables
+env_vars = c("sst", "bathy", "chl")
+
 sst_scaled <- unlist(pnts_all$sst_scaled)
 bathy_scaled <- unlist(pnts_all$bathy_scaled)
 chl_scaled <- unlist(pnts_all$chl_scaled)
@@ -1449,22 +1461,27 @@ for (i in 1:length(env_vars)) {
   # Get models
   load(paste0("Data_outputs/waal_birdis_glmm_between_", env_vars[i], ".RData"))
 
-  mod_run = get(paste0("waal_birdis_glmm.between_", env_vars[i]))
+  mod_between = get(paste0("waal_birdis_glmm.between_", env_vars[i]))
   
   # Calculate conditional repeatability parameters
   
   env_current <- var_map[[env_vars[i]]]
   
   ## Between ##
+ 
+  my_sigma = matrix( c(
+    as.numeric(VarCorr(mod_between)$cond$ID), 0,
+    0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
+  nrow = 2) 
+  
   res_between <- condR(
-    betaX = fixef(mod_run)$cond[habitat_var],
+    betaX = fixef(mod_between)$cond[habitat_var],
     meanX =  mean(env_current),
     Vx = var(env_current),
     Vr = (pi^2)/3,
-    Sigma = as.matrix(VarCorr(mod_run)$cond$ID),    
-    Vo =  as.numeric(VarCorr(mod_run)$cond$tripID),  
-    xrange = range(env_current)
-  )
+    Sigma = my_sigma,    
+    Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
+    xrange = range(env_current) )
   
   res_between.summary <- data.frame(var_between = res_between$Vi,
                             R2 = res_between$R2s, 
@@ -1483,14 +1500,14 @@ for (i in 1:length(env_vars)) {
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
-    geom_line(data = res_between$condR, aes(x=x, y=condR), col = "#FFC107", size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#f3a20c") +
+    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = "#FFC107", size = 1) +
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
     labs(y = "Conditional repeatability") +
     theme_bw() 
 
   assign(paste0(env_vars[i], "_condR_plot"), condR_plot)
   
-  rm(mod_run)
+  rm(mod_between)
   rm(list = paste0("waal_birdis_glmm.between_", env_vars[i]))
   gc()
   
@@ -1506,8 +1523,9 @@ for (i in 1:length(env_vars)) {
   habitat_var = paste0(env_vars[i], "_scaled")
   
   # Get models
-  matching_models <- model_info[grepl(env_vars[i], names(model_info))]
-  mod_run.between <- matching_models[grepl("between", names(matching_models))][[1]]$model
+  load(paste0("Data_outputs/waal_birdis_glmm_between_", env_vars[i], ".RData"))
+
+  mod_between = get(paste0("waal_birdis_glmm.between_", env_vars[i]))
   
   # Get environmental range
   ind_ranges <- pnts_all %>%
@@ -1522,10 +1540,12 @@ for (i in 1:length(env_vars)) {
     unnest(cols = c(habitat_val)) 
   
   # Get random effects
-  rnd_eff.between <- get_rnd_effects(mod_run.between, habitat_var) %>%
-    separate(ID, c("ring", "season"), remove = F) %>% mutate(season_type = "between season")
- 
-  predictions.ind <- merge(predictions.ind, rnd_eff.between, by = "ring", all.x = TRUE)
+  rnd_eff.between <- get_rnd_effects(mod_between, habitat_var) %>%
+    mutate(ring = ID, season = NA, season_type = "Between seasons")
+  
+  rnd_eff.all <-rnd_eff.between
+  
+  predictions.ind <- merge(predictions.ind, rnd_eff.all, by = "ring", all.x = TRUE)
   predictions.ind$logit <- predictions.ind$intercept + predictions.ind$slope * predictions.ind$habitat_val
   predictions.ind$probability <- 1 / (1 + exp(-predictions.ind$logit))  
   
@@ -1540,7 +1560,6 @@ for (i in 1:length(env_vars)) {
   pred_plot <- ggplot() +
       geom_line(data = predictions.ind, aes(x = habitat_val, y = probability, group = ID),
                 colour = line_colour, alpha = 0.2) +
-      facet_grid(~season_type) +
       theme_bw() +
       theme(legend.position = "none") +
       labs(y = "Probability of use")
@@ -1569,20 +1588,21 @@ Chlorophyll values are heavily skewed, with extremely high concentrations occurr
 ```{r waal_cro_process_data, eval = FALSE}
 
 # Do some data cleaning
-load("Data_inputs/waal_cro_sst-bathy-chla_data_population_level.RData")
+load("Data_inputs/waal_crozet_sst-bathy-chla_data_population_level.RData")
 
-## Remove birds with only a couple of points
+## Remove NAs and set distance to km; remove birds with too few data points (i.e. fewer than two day's worth of data)
 pnts_all %<>% 
+  filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
+  mutate(dist_col.km = dist_col/1000) %>%
   rename(ID = ring) %>%
   select(-index) %>%
   mutate(ID_season = paste0(ID, "_", season),
-         tripID = paste0(ID, "_", tripID)) %>%
-  group_by(ID, year) %>%
-  mutate(n_recs = n(),
-         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
+         tripID = paste0(ID, "_", tripID))  %>%
+  group_by(ID) %>%
+  mutate(n_recs = n_distinct(date_hourly),
+         flag = ifelse(n_recs < 48, "flag", "fine")) %>%
   filter(flag == "fine") %>%
-  select(-flag)
-
+  select(-c(flag, n_recs)) 
 
 ### TESTING - MAP HIGH CHLOROPHYLL
 
@@ -1597,10 +1617,6 @@ pnts_all %<>%
 #   ) +
 #   theme_minimal()
 ##
-
-## Remove NAs and set distance to km
-pnts_all %<>% filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA)) %>%
-  mutate(dist_col.km = dist_col/1000)
 
 ## Scale the variables
 pnts_all %<>%
@@ -1730,6 +1746,11 @@ chl_ranef.plot <- plots[[2]] +
 sst_ranef.plot <- plots[[3]] + 
   theme(axis.title.y = element_blank())
 
+waal_cro_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+          ncol = 3)
+waal_cro_used_plot <- annotate_figure(waal_cro_used_plot, top = text_grob("WAAL - Crozet", face = "bold", size = 14))
+save(waal_cro_used_plot, file = "Data_outputs/waal_cro_used_plot.RData")
+
 png(filename = "Figures/waal_cro_habitat_used_ranef_plot.png", width = 14, height = 5, units = "in", res = 600)
 ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
@@ -1774,17 +1795,17 @@ As a result, I have droppped the polynomial terms as I think the models are unab
 
 load("Data_inputs/waal_cro_habitat_data.RData")
 
-# try scaling chl-A
+# try logging chl-A
 
 # Add a small constant to avoid log(0)
-pnts_all %<>%
+pnts_all %<>% mutate(chl_scaled_log = scale(log(chlA + 0.01)) )
 
 # Within season #
 
 tok <- Sys.time()
 waal_cro_glmm.within_sst <- glmmTMB(
-   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 + sst_scaled | ID_season ) + (1 | tripID),
+   used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase + 
+         (1 | ID_season) + (0 + sst_scaled | ID_season ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 tik <- Sys.time()
@@ -1795,8 +1816,8 @@ save(waal_cro_glmm.within_sst, file = "Data_outputs/waal_cro_glmm_within_sst.RDa
 rm(waal_cro_glmm.within_sst); gc()
 
 waal_cro_glmm.within_bathy <- glmmTMB(
-   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-        (1 + bathy_scaled | ID_season) + (1 | tripID),
+   used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase + 
+        (1 | ID_season) + (0 + bathy_scaled | ID_season) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1805,8 +1826,8 @@ rm(waal_cro_glmm.within_bathy); gc()
 
 
 waal_cro_glmm.within_chl <-  glmmTMB(
-   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +  
-        (1 + chl_scaled | ID_season) + (1 | tripID),
+   used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +  
+        (1 | ID_season) + (0 + chl_scaled_log | ID_season) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1816,8 +1837,8 @@ rm(waal_cro_glmm.within_chl); gc()
 # Between season #
 
 waal_cro_glmm.between_sst <-  glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + sst_scaled | ID) + (1 | tripID),
+  used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +
+        (1 | ID) + (0  + sst_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1825,8 +1846,8 @@ save(waal_cro_glmm.between_sst, file = "Data_outputs/waal_cro_glmm_between_sst.R
 rm(waal_cro_glmm.between_sst); gc()
 
 waal_cro_glmm.between_bathy <- glmmTMB(
-   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-        (1 + bathy_scaled | ID) + (1 | tripID),
+   used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase + 
+        (1 | ID) + (0 + bathy_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1835,20 +1856,20 @@ rm(waal_cro_glmm.between_bathy); gc()
 
 
 waal_cro_glmm.between_chl <- glmmTMB(
-   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-        (1 + chl_scaled | ID) + (1 | tripID),
+   used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase + 
+        (1 | ID) + (0 + chl_scaled_log | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
 save(waal_cro_glmm.between_chl, file = "Data_outputs/waal_cro_glmm_between_chl.RData")
 
-waal_cro_glmm.between_chl.log <- glmmTMB(
-   used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase + 
-        (1 + chl_scaled_log | ID) + (1 | tripID),
-  data = pnts_all,
-  family = binomial() )
-
-
+# waal_cro_glmm.between_chl.log <- glmmTMB(
+#    used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase + 
+#         (1 | ID) + (0 + chl_scaled_log | ID) + (1 | tripID),
+#   data = pnts_all,
+#   family = binomial() )
+# 
+# save(waal_cro_glmm.between_chl.log, file = "Data_outputs/waal_cro_glmm_between_chl_log.RData")
 
 rm(waal_cro_glmm.between_chl); gc()
 
@@ -1938,7 +1959,7 @@ gc()
 
 #### Conditional repeatability
 
-```{r waal_cro_calc_repeatability}
+```{r waal_cro_conditional_repeatability}
 
 load("Data_inputs/waal_cro_habitat_data.RData")
 
@@ -1962,6 +1983,7 @@ cond_res.list <- vector(mode = "list", length = length(env_vars))
 for (i in 1:length(env_vars)) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
+  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
   load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars[i], ".RData"))
@@ -1975,12 +1997,17 @@ for (i in 1:length(env_vars)) {
   env_current <- var_map[[env_vars[i]]]
   
   ## Within ##
+  my_sigma = matrix( c(
+    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
+    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
+  nrow = 2) 
+   
   res_within <- condR(
     betaX = fixef(mod_within)$cond[habitat_var],
     meanX =  mean(env_current),
     Vx = var(env_current),
     Vr = (pi^2)/3,
-    Sigma = as.matrix(VarCorr(mod_within)$cond$ID_season),    
+    Sigma = my_sigma,    
     Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
     xrange = range(env_current)
   )
@@ -1997,12 +2024,17 @@ for (i in 1:length(env_vars)) {
   rownames(res_within.summary) <- NULL
    
   ## Between ##
+  my_sigma = matrix( c(
+    as.numeric(VarCorr(mod_between)$cond$ID), 0,
+    0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
+  nrow = 2) 
+  
   res_between <- condR(
     betaX = fixef(mod_between)$cond[habitat_var],
     meanX =  mean(env_current),
     Vx = var(env_current),
     Vr = (pi^2)/3,
-    Sigma = as.matrix(VarCorr(mod_between)$cond$ID),    
+    Sigma = my_sigma,    
     Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
     xrange = range(env_current)
   )
@@ -2024,10 +2056,10 @@ for (i in 1:length(env_vars)) {
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
-    geom_line(data = res_between$condR, aes(x=x, y=condR), col = "#FFC107", size = 1) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR), col = "#D81B60", size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#f3a20c") +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#b31650") +
+    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = "#FFC107", size = 1) +
+    geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = "#D81B60", size = 1) +
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
+    geom_hline(data = res_within.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#b31650") +
     labs(y = "Conditional repeatability") +
     theme_bw() 
 
@@ -2048,6 +2080,7 @@ save(condR_results, file = "Data_outputs/waal_cro_condR_results.RData")
 for (i in 1:length(env_vars)) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
+  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
   load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars[i], ".RData"))
@@ -2104,10 +2137,10 @@ for (i in 1:length(env_vars)) {
 png("Figures/waal_cro_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + labs(x = "Scaled bathymetry (m below sea level)"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
-          chl_pred_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
+          chl_pred_plot + labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
           bathy_condR_plot + labs(x = "Scaled bathymetry (m below sea level)"),
           sst_condR_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
-          chl_condR_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")"))+ theme(axis.title.y = element_blank()),
+          chl_condR_plot + labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")"))+ theme(axis.title.y = element_blank()),
           ncol = 3, nrow = 2)
 dev.off()
 
@@ -2119,46 +2152,142 @@ dev.off()
 
 library(MCMCglmm)
 library(brms) 
+library(igraph)
 
+# (1) Load and subsample the data
 load("Data_inputs/waal_cro_habitat_data.RData")
 
 pnts.used <- pnts_all %>% filter(used == 1)
-
-## Subsample the data
 pnts.sampled <- sample_n(pnts.used, 200000)
 
-pedigree.df <- read.csv("Data_inputs/waal_cro_pedigree.csv")
+pedigree.df <- read.csv("Data_inputs/waal_crozet_pedigree.csv")
 pedigree.df %<>% dplyr::select(-Year)
 
-#unique(pnts.used$ID[pnts.used$ID %in% pedigree.df$id])
 
-# produces an inverse additive genetic relationship matrix
-Ainv <- inverseA(pedigree.df)$Ainv
+# (2) Check the pedigree
 
-# make a covariance matrix
-A <- solve(Ainv)
+## Are the ID in pnts.used the same as id in pedigree.df?
+pedigree.df$id <- as.character(pedigree.df$id)
+pnts.used$ID <- as.character(pnts.used$ID)
 
-# match the IDs in the dataset and pedigree
-pnts.sampled$animal <- pnts.sampled$ID 
-pnts.sampled$animal <- factor(pnts.sampled$animal)
+model_ids <- unique(pnts.used$ID)
+pedigree_ids <- pedigree.df$id
 
-pnts.heritable <- subset(pnts.sampled, animal %in% rownames(Ainv))
-pnts.heritable <- droplevels(pnts.heritable)
-all(levels(pnts.heritable$animal) %in% rownames(Ainv))
+### IDs in model AND pedigree
+ids_in_both <- intersect(model_ids, pedigree_ids)
 
-# fit the model
+### IDs in model NOT in pedigree
+ids_missing_from_pedigree <- setdiff(model_ids, pedigree_ids)
+
+### IDs in pedigree NOT in model (optional info)
+ids_unused_in_model <- setdiff(pedigree_ids, model_ids)
+
+
+# (3) Subset the pedigree to include all ancestors
+
+## Check formatting
+pedigree.df$id <- as.character(pedigree.df$id)
+pedigree.df$dam <- as.character(pedigree.df$dam)
+pedigree.df$sire <- as.character(pedigree.df$sire)
+pnts.used$ID <- as.character(pnts.used$ID)
+
+## Function to recursively get ancestors
+get_ancestors <- function(ids, pedigree) {
+  all_ids <- ids
+  new_ids <- ids
+  
+  repeat {
+    # Get dams and sires of current new_ids
+    parents <- pedigree[pedigree$id %in% new_ids, c("dam", "sire")]
+    parents <- unique(na.omit(unlist(parents)))
+    
+    # Stop if no new parents found
+    parents <- setdiff(parents, all_ids)
+    if (length(parents) == 0) break
+    
+    # Add new parents to the list
+    all_ids <- c(all_ids, parents)
+    new_ids <- parents
+  }
+  
+  return(unique(all_ids))
+}
+
+model_ids <- unique(pnts.used$ID)
+ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
+length(ped_ids_needed)
+
+## Subset the pedigree
+pedigree.pruned <- pedigree.df[pedigree.df$id %in% ped_ids_needed, ]
+
+## Check for missing IDs
+setdiff(model_ids, pedigree.pruned$id) 
+
+## Add these as founders
+missing_ids <- setdiff(model_ids, pedigree.pruned$id)
+founders <- data.frame(id = missing_ids, dam = NA, sire = NA)
+
+### Append to your original pedigree
+pedigree.extended <- rbind(pedigree.df, founders)
+
+### Now prune the extended version
+ped_ids_needed <- get_ancestors(model_ids, pedigree.extended)
+pedigree.pruned <- pedigree.extended[pedigree.extended$id %in% ped_ids_needed, ]
+
+setdiff(model_ids, pedigree.pruned$id)
+
+# (4) Visualise the pruned pedigree
+
+edges <- pedigree.pruned %>%
+  tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
+  dplyr::select(from = value, to = id)
+
+## Build igraph object
+ped_graph <- graph_from_data_frame(edges, directed = TRUE)
+
+plot(ped_graph,
+     vertex.size = 3,
+     vertex.label = NA,
+     edge.arrow.size = 0.2,
+     layout = layout_with_sugiyama(ped_graph)$layout)
+
+
+# (5) Look at the genetic matrix A
+
+ped <- pedigree.pruned
+names(ped) <- c("animal", "dam", "sire")
+
+Ainv <- inverseA(ped)$Ainv
+A <- as.matrix(solve(Ainv))
+
+## Inspect sparse matrix
+A_sparse <- as(A, "dgCMatrix")
+summary(A_sparse)
+
+### Check how many non-zero off-diagonal elements
+nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
+density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
+cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
+
+library(pheatmap)
+pheatmap(as.matrix(A), show_rownames = FALSE, show_colnames = FALSE)
+
+
+
+# (6) Fit the model
+pnts.used$animal <- pnts.used$ID
+
 mod_brm <- brm(
   formula = bf(
     sst_scaled ~ dist_col + phase +
       (1 | season) +
       (1 | tripID) +
       (1 | gr(animal, cov = A)) ),
-  data = pnts.heritable,
+  data = pnts.used,
   family = gaussian(),  
   data2 = list(A = A),  # your pedigree relatedness matrix
   cores = 4, chains = 4, iter = 4000,
-  control = list(adapt_delta = 0.95)
-)
+  control = list(adapt_delta = 0.95))
 
 mod_noA <- brm(
   sst_scaled ~ dist_col + phase + (1 | season) + (1 | tripID) + (1 | animal),
@@ -2176,6 +2305,8 @@ mod_simple <- brm(
 # subsampled version took 24 hours
 
 save(mod_brm, file = "Data_outputs/TEMP_waal_cro_hertiability.RData")
+save(mod_noA, file = "Data_outputs/TEMP_waal_cro_hertiability_noPedigree.RData")
+save(mod_simple, file = "Data_outputs/TEMP_waal_cro_hertiability_simple.RData")
 # to do this on a slope would require
 # (1 + sst_scaled | gr(animal, cov = A))
 
@@ -2202,23 +2333,41 @@ ggplot(posterior, aes(x = sd_animal__Intercept)) +
 ```{r bbal_birdis_process_data, eval = FALSE}
 
 # Do some data cleaning
-load("Data_inputs/bbal_birdis_sst-bathy-chlA_data_population_level.RData")
+load("Data_inputs/bbal_birdis_sst-bathy-chla_data_population_level.RData")
 
-## Remove birds with only a couple of points
+## Remove NAs and set distance to km; remove birds with too few data points (i.e. fewer than a day's worth of data)
 pnts_all %<>% 
+  filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
+  mutate(dist_col.km = dist_col/1000) %>%
   rename(ID = ring) %>%
   select(-index) %>%
   mutate(ID_season = paste0(ID, "_", season),
-         tripID = paste0(ID, "_", tripID)) %>%
-  group_by(ID, year) %>%
-  mutate(n_recs = n(),
-         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
+         tripID = paste0(ID, "_", tripID))  %>%
+  group_by(ID_season) %>%
+  mutate(n_recs = n_distinct(date_hourly),
+         flag = ifelse(n_recs < 24, "flag", "fine")) %>%
   filter(flag == "fine") %>%
-  select(-flag)
+  select(-c(flag, n_recs)) 
 
-## Remove NAs and set distance to km
-pnts_all %<>% filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
-  mutate(dist_col.km = dist_col/1000)
+## Resample to maintain used:available ratio
+pnts_all %<>%
+  group_by(ID, date_hourly) %>%
+  group_modify(~ {
+    used_pts <- .x %>% filter(used == 1)
+    avail_pts <- .x %>% filter(used == 0)
+    # How many used?
+    n_used <- nrow(used_pts)
+    target_avail <- n_used * 6
+    # If enough available points
+    if (nrow(avail_pts) >= target_avail) {
+      avail_pts <- avail_pts %>% slice_sample(n = target_avail)
+      bind_rows(used_pts, avail_pts)
+    } else {
+      # Not enough: drop the whole group
+      tibble()
+    }
+  }) %>%
+  ungroup()
 
 ## Scale the variables
 pnts_all %<>%
@@ -2233,8 +2382,17 @@ pnts_all %<>%
          sst_scaled2 = sst_scaled^2,
                      bathy_scaled2 = bathy_scaled^2) 
 
-save(pnts_all, file = "Data_inputs/bbal_birdis_habitat_data.RData")
+used_avail_summary <- pnts_all %>%
+  group_by(ID) %>%
+  summarise(
+    used_count = sum(used == 1),
+    avail_count = sum(used == 0),
+    total = n(),
+    used_ratio = used_count / total )
 
+hist(used_avail_summary$used_ratio)
+
+save(pnts_all, file = "Data_inputs/bbal_birdis_habitat_data.RData")
 
 
 ```
@@ -2249,11 +2407,6 @@ load("Data_inputs/bbal_birdis_habitat_data.RData")
 
 pnts.used <- pnts_all %>% filter(used == 1)
 
-# # To get a summary of trips per season per individual
-# pnts.used.summary <- pnts.used %>% group_by(tripID) %>% filter(row_number() == 1)
-# pnts_used.table <- table(pnts.used.summary$ID, pnts.used.summary$season)
-# pnts_used.table <- cbind(pnts_used.table, rowSums(pnts_used.table))
-
 env_vars <- c("SST", "bathy", "chlA")
 rpt_df <- data.frame(env_var = character(), rpt_within = numeric(), rpt_across = numeric())
 var.list <- list()
@@ -2267,8 +2420,13 @@ for (i in 1:length(env_vars)) {
   ## Extract random intercepts
   ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
   ring_ranefs <- ranefs[ranefs$group == "ID_season" | ranefs$group == "ID", ] %>% 
-    rename(ID = level) %>%
-    mutate(env = env_vars[i])
+    rename(ID = level, intercept = estimate) %>%
+    mutate(env = env_vars[i],
+           estimate = fixef(mod)[1] + intercept,
+           season_type = ifelse(group == "ID_season", "Within season", "Between seasons")) %>%
+    separate(ID, into = c("ring", "season"), sep = "_", remove = FALSE) %>%
+    select(-c(term, effect)) %>%
+    relocate(estimate, .before = intercept)
   
   ranef.list[[i]] <- ring_ranefs
   
@@ -2327,9 +2485,9 @@ split_df <- ranefs.df %>% group_by(env) %>% group_split()
 
 make_plot <- function(df) {
   df <- df %>%
-    mutate(ring_ordered = forcats::fct_reorder(ID, estimate))
+    mutate(ring_ordered = forcats::fct_reorder(ID, intercept))
 
-  ggplot(df, aes(x = estimate, y = ring_ordered, col = env)) +
+  ggplot(df, aes(x = intercept, y = ring_ordered, col = env)) +
     geom_point() +
     geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
     scale_color_manual(values = env_colours, guide = "none") +
@@ -2349,8 +2507,13 @@ chl_ranef.plot <- plots[[2]] +
 sst_ranef.plot <- plots[[3]] + 
   theme(axis.title.y = element_blank())
 
+bbal_birdis_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+          ncol = 3)
+bbal_birdis_used_plot <- annotate_figure(bbal_birdis_used_plot, top = text_grob("BBAL - Bird Island", face = "bold", size = 14))
+save(bbal_birdis_used_plot, file = "Data_outputs/bbal_birdis_used_plot.RData")
+
 png(filename = "Figures/bbal_birdis_habitat_used_ranef_plot.png", width = 14, height = 5, units = "in", res = 600)
-ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+ ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
 dev.off()
 
@@ -2384,24 +2547,23 @@ kable(var.table, format = "html",
 
 ```{r bbal_birdis_fit_models, eval = FALSE}
 
+load("Data_inputs/bbal_birdis_habitat_data.RData")
+
 # Within season #
 
-tok <- Sys.time()
 bbal_birdis_glmm.within_sst <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-         (1 + sst_scaled | ID_season ) + (1 | tripID),
+         (1 | ID_season) + (0 + sst_scaled | ID_season ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
-tik <- Sys.time()
-
-tik-tok
 
 save(bbal_birdis_glmm.within_sst, file = "Data_outputs/bbal_birdis_glmm_within_sst.RData")
 rm(bbal_birdis_glmm.within_sst); gc()
 
+
 bbal_birdis_glmm.within_bathy <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + bathy_scaled | ID_season) + (1 | tripID),
+        (1 | ID_season) + (0 + bathy_scaled | ID_season) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2411,7 +2573,7 @@ rm(bbal_birdis_glmm.within_bathy); gc()
 
 bbal_birdis_glmm.within_chl <-  glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + chl_scaled | ID_season) + (1 | tripID),
+        (1 | ID_season) + (0 + chl_scaled | ID_season) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2422,7 +2584,7 @@ rm(bbal_birdis_glmm.within_chl); gc()
 
 bbal_birdis_glmm.between_sst <-  glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 | ID) + (1 + sst_scaled | ID) + (1 | tripID),
+        (1 | ID) + (0 + sst_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial(),
   control = glmmTMBControl(optCtrl = list(iter.max=1e5, eval.max=1e5)) )
@@ -2430,9 +2592,10 @@ bbal_birdis_glmm.between_sst <-  glmmTMB(
 save(bbal_birdis_glmm.between_sst, file = "Data_outputs/bbal_birdis_glmm_between_sst.RData")
 rm(bbal_birdis_glmm.between_sst); gc()
 
+
 bbal_birdis_glmm.between_bathy <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + bathy_scaled | ID) + (1 | tripID),
+        (1 | ID) + (0 + bathy_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2442,7 +2605,7 @@ rm(bbal_birdis_glmm.between_bathy); gc()
 
 bbal_birdis_glmm.between_chl <- glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 + chl_scaled | ID) + (1 | tripID),
+        (1 | ID) + (0 + chl_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2508,22 +2671,22 @@ auc_results %<>% mutate(species = "BBAL", colony = "birdis") %>% relocate(c(spec
 
 ```{r bbal_birdis_fixed_effects_predictions }
 
-load("Data_outputs/bbal_birdis_glmm_within_sst.RData")
-load("Data_outputs/bbal_birdis_glmm_within_bathy.RData")
-load("Data_outputs/bbal_birdis_glmm_within_chl.RData")
+load("Data_outputs/bbal_birdis_glmm_between_sst.RData")
+load("Data_outputs/bbal_birdis_glmm_between_bathy.RData")
+load("Data_outputs/bbal_birdis_glmm_between_chl.RData")
 
 # Plot effects
-pred_plot.sst <-   plot(ggeffects::ggpredict(bbal_birdis_glmm.within_sst, terms = "sst_scaled [all]", type = "fixed"))
-pred_plot.bathy <- plot(ggeffects::ggpredict(bbal_birdis_glmm.within_bathy, terms = "bathy_scaled [all]", type = "fixed"))
-pred_plot.chl <-  plot(ggeffects::ggpredict(bbal_birdis_glmm.within_chl, terms = "chl_scaled [all]", type = "fixed"))
+pred_plot.sst <-   plot(ggeffects::ggpredict(bbal_birdis_glmm.between_sst, terms = "sst_scaled [all]", type = "fixed"))
+pred_plot.bathy <- plot(ggeffects::ggpredict(bbal_birdis_glmm.between_bathy, terms = "bathy_scaled [all]", type = "fixed"))
+pred_plot.chl <-  plot(ggeffects::ggpredict(bbal_birdis_glmm.between_chl, terms = "chl_scaled [all]", type = "fixed"))
 
 all_plots <- ggarrange(pred_plot.sst + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)", y = "Used")) + theme(plot.title = element_blank()), 
           pred_plot.bathy + labs(x = "Scaled bathymetry (m below sea level)", y = "Used") + theme(plot.title = element_blank(),
                                   axis.title.y = element_blank()),
           pred_plot.chl + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")", y = "Used")) + theme(plot.title = element_blank()),
-          ncol = 2, nrow = 2)
+          ncol = 3, nrow = 1)
 
-png("Figures/bbal_birdis_habitat_fixed_effects.png")
+png("Figures/bbal_birdis_habitat_fixed_effects.png", width = 9, height = 4, units = "in", res = 600)
 all_plots
 dev.off()
 
@@ -2534,10 +2697,9 @@ gc()
 
 ##### Conditional repeatability
 
-```{r bbal_birdis_calc_repeatability}
+```{r bbal_birdis_cond_repeatability}
 
 load("Data_inputs/bbal_birdis_habitat_data.RData")
-
 
 # Calculate conditional repeatability ------
 
@@ -2572,12 +2734,18 @@ for (i in 1:length(env_vars)) {
   env_current <- var_map[[env_vars[i]]]
   
   ## Within ##
+  
+  my_sigma = matrix( c(
+    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
+    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
+    nrow = 2) 
+  
   res_within <- condR(
     betaX = fixef(mod_within)$cond[habitat_var],
     meanX =  mean(env_current),
     Vx = var(env_current),
     Vr = (pi^2)/3,
-    Sigma = as.matrix(VarCorr(mod_within)$cond$ID_season),    
+    Sigma = my_sigma,    
     Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
     xrange = range(env_current)
   )
@@ -2595,11 +2763,10 @@ for (i in 1:length(env_vars)) {
    
   ## Between ##
   
-  ## One model has no random intercept, so account for this
-  if(env_vars[i] == "sst") { my_sigma = matrix( c(
+  my_sigma = matrix( c(
     as.numeric(VarCorr(mod_between)$cond$ID), 0,
     0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
-  nrow = 2) } else { my_sigma = as.matrix(VarCorr(mod_between)$cond$ID) }
+  nrow = 2) 
   
   res_between <- condR(
     betaX = fixef(mod_between)$cond[habitat_var],
@@ -2608,8 +2775,7 @@ for (i in 1:length(env_vars)) {
     Vr = (pi^2)/3,
     Sigma = my_sigma,    
     Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
-    xrange = range(env_current)
-  )
+    xrange = range(env_current)  )
   
   res_between.summary <- data.frame(var_between = res_between$Vi,
                             R2 = res_between$R2s, 
@@ -2628,10 +2794,10 @@ for (i in 1:length(env_vars)) {
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
-    geom_line(data = res_between$condR, aes(x=x, y=condR), col = "#FFC107", size = 1) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR), col = "#D81B60", size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#f3a20c") +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#b31650") +
+    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = "#FFC107", size = 1) +
+    geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = "#D81B60", size = 1) +
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
+    geom_hline(data = res_within.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#b31650") +
     labs(y = "Conditional repeatability") +
     theme_bw() 
 
@@ -2647,7 +2813,9 @@ for (i in 1:length(env_vars)) {
 condR_results <- do.call("rbind", cond_res.list)
 save(condR_results, file = "Data_outputs/bbal_birdis_condR_results.RData")
 
-# Plot individual slopes 
+# Plot individual slopes ----
+
+rnd_effs.list <- list()
 
 for (i in 1:length(env_vars)) {
 
@@ -2678,7 +2846,9 @@ for (i in 1:length(env_vars)) {
   rnd_eff.between <- get_rnd_effects(mod_between, habitat_var) %>%
     mutate(ring = ID, season = NA, season_type = "Between seasons")
   
-  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between)
+  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between) %>% mutate(env = env_vars[i])
+  
+  rnd_effs.list[[i]] <- rnd_eff.all
   
   predictions.ind <- merge(predictions.ind, rnd_eff.all, by = "ring", all.x = TRUE)
   predictions.ind$logit <- predictions.ind$intercept + predictions.ind$slope * predictions.ind$habitat_val
@@ -2704,7 +2874,10 @@ for (i in 1:length(env_vars)) {
   
 }
 
+rnd_effs.out <- do.call("rbind", rnd_effs.list)
+save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
 
+# Make the plot ----
 png("Figures/bbal_birdis_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + labs(x = "Scaled bathymetry (m below sea level)"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
@@ -2717,26 +2890,73 @@ dev.off()
 
 ```
 
+#### Extract individual estimates
+
+```{r bbal_birdis_extract_ind_estimates}
+
+load("Data_outputs/bbal_birdis_habitat_selection.RData")
+load("Data_outputs/bbal_birdis_habitat_used_ranef.RData")
+
+ranefs.df2 <- ranefs.df %>% 
+  select(c(season_type, env, season, ring, estimate, intercept)) %>%
+  rename(used_estimate = estimate,
+         used_intercept = intercept) %>%
+  mutate(env = case_when( env == "SST" ~ "sst",
+                          env == "chlA" ~ "chl",
+                          env == "bathy" ~ "bathy"))
+
+rnd_effs.out2 <- rnd_effs.out %>%
+  select(c(season_type, env, season, ring, intercept, slope)) %>%
+  rename(selection_intercept = intercept,
+         selection_slope = slope)
+
+ind_estimates <- merge(ranefs.df2, rnd_effs.out2, by = c("ring", "season", "season_type", "env"), all = T)
+write.csv(ind_estimates, file = "Data_outputs/bbal_birdis_habitat_individual_estimates.csv", row.names = FALSE)
+
+```
+
 ### Kerguelen
+
+For Kerguelen especially, birds' preference for shelf zones makes the bathymetry model fall apart. To tackle this, I have calculated distance from the shelf, and split preferences into on shelf, shelf break, and off shelf. This seems to resolve my problems. The shelf break is delimited at 1000m following Hindell et al. 2011.
 
 ```{r bbal_ker_process_data, eval = FALSE}
 
-# Do some data cleaning
-load("Data_inputs/bbal_ker_sst-bathy-chla_data_population_level.RData")
+load("Data_inputs/bbal_kerguelen_sst-bathy-chla_data_population_level.RData")
 
-scale_2SD <- function(variable) { (variable - mean(variable, na.rm = TRUE)) / sd(variable, na.rm = TRUE) * 2 }
-
-## Remove records with only a couple of points
+## Remove NAs and set distance to km; remove birds with too few data points
 pnts_all %<>% 
-  group_by(ring, year) %>%
-  mutate(n_recs = n(),
-         flag = ifelse(n_recs < 20, "flag", "fine")) %>%
+  filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
+  mutate(dist_col.km = dist_col/1000) %>%
+  rename(ID = ring) %>%
+  select(-index) %>%
+  mutate(ID_season = paste0(ID, "_", season),
+         tripID = paste0(ID, "_", tripID))  %>%
+  group_by(ID_season) %>%
+  mutate(n_recs = n_distinct(date_hourly),
+         flag = ifelse(n_recs < 24, "flag", "fine")) %>%
   filter(flag == "fine") %>%
-  select(-flag)
+  select(-c(flag, n_recs)) 
 
-## Remove NAs and set distance to km
-pnts_all %<>% filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
-  mutate(dist_col.km = dist_col/1000)
+## Resample to maintain used:available ratio
+pnts_all %<>%
+  group_by(ID, date_hourly) %>%
+  group_modify(~ {
+    used_pts <- .x %>% filter(used == 1)
+    avail_pts <- .x %>% filter(used == 0)
+    # How many used?
+    n_used <- nrow(used_pts)
+    target_avail <- n_used * 6
+    # If enough available points
+    if (nrow(avail_pts) >= target_avail) {
+      avail_pts <- avail_pts %>% slice_sample(n = target_avail)
+      bind_rows(used_pts, avail_pts)
+    } else {
+      # Not enough: drop the whole group
+      tibble()
+    }
+  }) %>%
+  ungroup()
+
 
 ## Scale the variables
 pnts_all %<>%
@@ -2749,38 +2969,44 @@ pnts_all %<>%
                          as.numeric(year(date_hourly)),
                          as.numeric(year(date_hourly)) + 1 ),
          sst_scaled2 = sst_scaled^2,
-                     bathy_scaled2 = bathy_scaled^2) %>%
-  rename(ID = ring) %>%
-  select(-index) %>%
-  mutate(ID_season = paste0(ID, "_", season),
-         tripID = paste0(ID, "_", tripID))
+                     bathy_scaled2 = bathy_scaled^2)
+
+## Add binomial bathymetry variable
+pnts_all %<>%
+  mutate(dist_shelf_bin = case_when(
+            dist_shelf_break_signed > 20  ~ "on_shelf",       # >20 km inside shelf
+            dist_shelf_break_signed >= -20 & dist_shelf_break_signed <= 20 ~ "near_break", # ±20 km of break
+            dist_shelf_break_signed < -20  ~ "off_shelf"       # >20 km offshore (deeper)
+    ) )
+
+pnts_all$dist_shelf_bin <- factor(pnts_all$dist_shelf_bin, levels = c("on_shelf", "near_break", "off_shelf"))
+
+
+# used_avail_summary <- pnts_all %>%
+#   group_by(ID) %>%
+#   summarise(
+#     used_count = sum(used == 1),
+#     avail_count = sum(used == 0),
+#     total = n(),
+#     used_ratio = used_count / total )
+# 
+# hist(used_avail_summary$used_ratio)
 
 save(pnts_all, file = "Data_inputs/bbal_ker_habitat_data.RData")
 
-```
 
-```{r check_used_available}
+pnts_subset <- pnts_all[sample(nrow(pnts_all), 20000),]
 
-used_avail_summary <- pnts_all %>%
-  group_by(ID) %>%
-  summarise(
-    used_count = sum(used == 1),
-    avail_count = sum(used == 0),
-    total = n(),
-    used_ratio = used_count / total )
-
-good_ids <- used_avail_summary %>%
-  filter(used_ratio > 0.1, used_ratio < 0.2) %>%
-  pull(ID)
-
-pnts_balanced <- pnts_all %>%
-  filter(ID %in% good_ids)
-
-with(pnts_balanced, prop.table(table(ID, used), 1))
-
-
+ggplot() +
+  geom_histogram(data = pnts_subset, aes(x = bathy, fill = dist_shelf_bin)) +
+  scale_fill_manual(values = c("lightblue", "blue", "darkblue")) +
+  labs(x = "Bathymetry (m below sea level)") +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.85),
+        legend.background = element_blank())
 
 ```
+
 
 #### Habitat use
 
@@ -2791,6 +3017,15 @@ with(pnts_balanced, prop.table(table(ID, used), 1))
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
 pnts.used <- pnts_all %>% filter(used == 1)
+
+# Visualising bathymetry
+ggplot(pnts.used, aes(x = bathy, fill = dist_shelf_bin)) +
+  geom_histogram(col = "black", bins = 50) +
+  scale_fill_manual(values = c("darkblue", "#86B8B8", "#B7DCEB")) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.85),
+        legend.background = element_blank())
+
 
 # # To get a summary of trips per season per individual
 # pnts.used.summary <- pnts.used %>% group_by(tripID) %>% filter(row_number() == 1)
@@ -2847,7 +3082,7 @@ save(ranefs.df, file = "Data_outputs/bbal_ker_habitat_used_ranef.RData")
 
 ##### Plot habitat use
 
-```{r bbal_ker_plot_habitat_used, fig.dim = c(10,5)}
+```{r bbal_ker_plot_habitat_used }
 
 load("Data_outputs/bbal_ker_habitat_used_ranef.RData")
 
@@ -2888,6 +3123,11 @@ chl_ranef.plot <- plots[[2]] +
 sst_ranef.plot <- plots[[3]] + 
   theme(axis.title.y = element_blank())
 
+bbal_ker_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+          ncol = 3)
+bbal_ker_used_plot <- annotate_figure(bbal_ker_used_plot, top = text_grob("BBAL - Kerguelen", face = "bold", size = 14))
+save(bbal_ker_used_plot, file = "Data_outputs/bbal_ker_used_plot.RData")
+
 png(filename = "Figures/bbal_ker_habitat_used_ranef_plot.png", width = 10, height = 5, units = "in", res = 600)
 ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
@@ -2925,43 +3165,10 @@ kable(var.table, format = "html",
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
-# Within season #
-
-# tok <- Sys.time()
-# bbal_ker_glmm.within_sst <- glmmTMB(
-#   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-#          (1 + sst_scaled | ID_season) + (1 | tripID),
-#   data = pnts_all,
-#   family = binomial() )
-# tik <- Sys.time()
-# 
-# tik - tok
-# 
-# save(bbal_ker_glmm.within_sst, file = "Data_outputs/bbal_ker_glmm_within_sst.RData")
-# rm(bbal_ker_glmm.within_sst); gc()
-# 
-# bbal_ker_glmm.within_bathy <- glmmTMB(
-#   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-#          (1 + bathy_scaled | ID_season) + (1 | tripID),
-#   data = pnts_all,
-#   family = binomial() )
-# 
-# save(bbal_ker_glmm.within_bathy, file = "Data_outputs/bbal_ker_glmm_within_bathy.RData")
-# rm(bbal_ker_glmm.within_bathy); gc()
-# 
-# bbal_ker_glmm.within_chl <- glmmTMB(
-#   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-#          (1 + chl_scaled | ID_season) + (1 | tripID),
-#   data = pnts_all,
-#   family = binomial() )
-# 
-# save(bbal_ker_glmm.within_chl, file = "Data_outputs/bbal_ker_glmm_within_chl.RData")
-# rm(bbal_ker_glmm.within_chl); gc()
-
 # Between season #
 
 bbal_ker_glmm.between_sst <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
+  used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
          (1 | ID) + (0 + sst_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial(),
@@ -2970,10 +3177,10 @@ bbal_ker_glmm.between_sst <- glmmTMB(
 save(bbal_ker_glmm.between_sst, file = "Data_outputs/bbal_ker_glmm_between_sst.RData")
 rm(bbal_ker_glmm.between_sst); gc()
 
-
+s
 bbal_ker_glmm.between_bathy <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
-         (1 | ID) + (0 + bathy_scaled | ID) + (1 | tripID),
+  used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
+         (1 | ID) + (0 + dist_shelf_bin | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2982,7 +3189,7 @@ rm(bbal_ker_glmm.between_bathy); gc()
 
 
 bbal_ker_glmm.between_chl <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase + 
+  used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
          (1 | ID) + (0 + chl_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
@@ -3090,28 +3297,25 @@ Conditional repeatability essential asks: 'How does repeatability change depend 
 One sticking point with conditional repeatability is that it only works with linear responses (though I am likely to drop all my polynomial responses going forward).
 
 
-```{r bbal_ker_calc_repeatability}
+```{r bbal_ker_cond_repeatability}
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
-# Calculate conditional repeatability ------
-
 ## Store envronmental variables
-env_vars = c("sst", "bathy", "chl")
+env_vars = c("sst", "chl", "bathy")
 
 sst_scaled <- unlist(pnts_all$sst_scaled)
-bathy_scaled <- unlist(pnts_all$bathy_scaled)
 chl_scaled <- unlist(pnts_all$chl_scaled)
 
 var_map <- list(
   sst = sst_scaled,
-  bathy = bathy_scaled,
-  chl = chl_scaled
-)
+  chl = chl_scaled )
+
+# Calculate conditional repeatability ------
 
 cond_res.list <- vector(mode = "list", length = length(env_vars))
 
-for (i in 1:length(env_vars)) {
+for (i in 1:2) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
   
@@ -3125,7 +3329,6 @@ for (i in 1:length(env_vars)) {
   env_current <- var_map[[env_vars[i]]]
   
   ## Between ##
- 
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_between)$cond$ID), 0,
     0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
@@ -3157,34 +3360,90 @@ for (i in 1:length(env_vars)) {
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
-    geom_line(data = res_between$condR, aes(x=x, y=condR), col = "#FFC107", size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = "#f3a20c") +
+    geom_line(data = res_between$condR, aes(x = x, y = condR/100), col = "#FFC107", size = 1) +
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
     labs(y = "Conditional repeatability") +
+    expand_limits(y = 0) +
     theme_bw() 
 
   assign(paste0(env_vars[i], "_condR_plot"), condR_plot)
   
   rm(mod_within, mod_between)
-  rm(list = paste0("bbal_ker_glmm.within_", env_vars[i]))
   rm(list = paste0("bbal_ker_glmm.between_", env_vars[i]))
   gc()
   
 }
 
 condR_results <- do.call("rbind", cond_res.list)
+
+
+## Bathymetry only ----
+
+load("Data_outputs/bbal_ker_glmm_between_bathy.RData")
+mod_between = get("bbal_ker_glmm.between_bathy")
+  
+# Extract variance-covariance matrices of random effects
+vc <- VarCorr(mod_between)$cond
+V_ID_intercept <- as.numeric(vc$ID[1,1])
+V_tripID <- as.numeric(vc$tripID[1,1])
+V_slopes_matrix <- vc$ID.1 
+
+# Extract variances (diagonal) for each bathymetry level slope
+V_slope <- diag(V_slopes_matrix)
+names(V_slope) <- colnames(V_slopes_matrix)
+  
+# Residual variance for binomial logistic link
+V_residual <- (pi^2) / 3
+
+# Total random variance per level
+V_random <- V_ID_intercept + V_slope + V_tripID
+V_total <- V_ID_intercept + V_slope + V_tripID + V_residual
+
+# Conditional repeatability per level
+R_cond <- V_random / V_total
+
+R_cond.df <- data.frame(R_cond) 
+R_cond.df <- cbind(rownames(R_cond.df), data.frame(R_cond.df, row.names = NULL))
+R_cond.df %<>%
+  mutate(species = "BBAL",
+         colony = "Kerguelen",
+         level = "Between", 
+         var_between = V_slope,
+         R2 = NA,
+         marginal_R2 = NA) %>%
+  rename(med_rpt = R_cond, env = `rownames(R_cond.df)`) %>%
+  relocate(c(species, colony, level, env, var_between, R2, marginal_R2, med_rpt))
+
+R_cond.df$env <- factor(R_cond.df$env, levels = c("dist_shelf_binon_shelf", "dist_shelf_binnear_break", "dist_shelf_binoff_shelf"))
+
+condR_results <- rbind(condR_results, R_cond.df)
+
 save(condR_results, file = "Data_outputs/bbal_ker_condR_results.RData")
 
-# Plot individual slopes 
+## Make the plot
 
-for (i in 1:length(env_vars)) {
+bathy_labels <- c("Off shelf", "Near shelf break", "On shelf")
+
+condR_plot <- ggplot() +
+    geom_point(data = R_cond.df, aes(x= env, y = med_rpt), col = "#FFC107", size = 3) +
+    labs(y = "Conditional repeatability") +
+    scale_x_discrete(labels = bathy_labels) +
+    expand_limits(y = 0) +
+    theme_bw() 
+
+assign("bathy_condR_plot", condR_plot)
+
+# Plot individual slopes ---- 
+
+rnd_effs.list <- list()
+
+for (i in 1:2) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
   
   # Get models
-  load(paste0("Data_outputs/bbal_ker_glmm_within_", env_vars[i], ".RData"))
   load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars[i], ".RData"))
 
-  mod_within = get(paste0("bbal_ker_glmm.within_", env_vars[i]))
   mod_between = get(paste0("bbal_ker_glmm.between_", env_vars[i]))
   
   # Get environmental range
@@ -3200,12 +3459,11 @@ for (i in 1:length(env_vars)) {
     unnest(cols = c(habitat_val)) 
   
   # Get random effects
-  rnd_eff.within <- get_rnd_effects(mod_within, habitat_var) %>%
-    separate(ID, c("ring", "season"), remove = F) %>% mutate(season_type = "Within season")
   rnd_eff.between <- get_rnd_effects(mod_between, habitat_var) %>%
     mutate(ring = ID, season = NA, season_type = "Between seasons")
   
-  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between)
+  rnd_eff.all <- rnd_eff.between
+  rnd_effs.list[[i]] <- rnd_eff.all %>% mutate(env = env_vars[i])
   
   predictions.ind <- merge(predictions.ind, rnd_eff.all, by = "ring", all.x = TRUE)
   predictions.ind$logit <- predictions.ind$intercept + predictions.ind$slope * predictions.ind$habitat_val
@@ -3222,7 +3480,6 @@ for (i in 1:length(env_vars)) {
   pred_plot <- ggplot() +
       geom_line(data = predictions.ind, aes(x = habitat_val, y = probability, group = ID),
                 colour = line_colour, alpha = 0.2) +
-      facet_grid(~season_type) +
       theme_bw() +
       theme(legend.position = "none") +
       labs(y = "Probability of use")
@@ -3231,20 +3488,90 @@ for (i in 1:length(env_vars)) {
   
 }
 
+rnd_effs.out <- do.call("rbind", rnd_effs.list)
 
-png("Figures/bbal_ker_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
-ggarrange(bathy_pred_plot + labs(x = "Scaled bathymetry (m below sea level)"), 
+
+## Bathymetry only ----
+
+fixef_vals <- fixef(bbal_ker_glmm.between_bathy)$cond
+levels_bathy <- levels(pnts_all$dist_shelf_bin)
+
+# Prepare a data frame to hold predictions
+ranef_slopes <- ranef(bbal_ker_glmm.between_bathy)$cond$ID
+pred_df <- expand.grid(ID = rownames(ranef_slopes),
+                       dist_shelf_bin = levels_bathy)
+
+# Calculate linear predictor per bird & category:
+pred_df %<>%
+  rowwise() %>%
+  mutate(rand_int = ranef_slopes[ID, "(Intercept)"],
+         rand_slope = if_else(dist_shelf_bin == "on_shelf", ranef_slopes[ID, "dist_shelf_binon_shelf"],
+                      if_else(dist_shelf_bin == "near_break", ranef_slopes[ID, "dist_shelf_binnear_break"],
+                      ranef_slopes[ID, "dist_shelf_binoff_shelf"])),
+    fixef_int = fixef_vals["(Intercept)"],
+    fixef_slope = if_else(dist_shelf_bin == "off_shelf", fixef_vals["dist_shelf_binoff_shelf"],
+                  if_else(dist_shelf_bin == "near_break", fixef_vals["dist_shelf_binnear_break"],
+                  0)),
+    eta = fixef_int + rand_int + fixef_slope + rand_slope,
+    prob = plogis(eta)) %>%
+  ungroup()
+
+# Plot lines connecting points per bird
+pred_plot <- ggplot(pred_df, aes(x = dist_shelf_bin, y = prob, group = ID)) +
+  geom_line(col = bathy_col, alpha = 0.2) +
+  geom_point(col = bathy_col, alpha = 0.2) +
+  scale_x_discrete(labels = c("On shelf", "Near shelf break", "Off shelf")) +
+  labs(x = "Bathymetry category",
+       y = "Probability of use") +
+  theme_bw()
+
+assign("bathy_pred_plot", pred_plot)
+
+save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
+
+
+
+
+
+# Make the plot ----
+png("Figures/bbal_ker_habitat_conditional_repeatability2.png", width = 14, height = 9, units = "in", res = 600)
+ggarrange(bathy_pred_plot + ylim(0, 1) + labs(x = "Proximity to shelf"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
           chl_pred_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
-          bathy_condR_plot + labs(x = "Scaled bathymetry (m below sea level)"),
+          bathy_condR_plot + labs(x = "Proximity to shelf"),
           sst_condR_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
           chl_condR_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")"))+ theme(axis.title.y = element_blank()),
           ncol = 3, nrow = 2)
 dev.off()
 
+
+
+
 ```
 
+#### Extract individual estimates
 
+```{r bbal_ker_extract_ind_estimates}
+
+load("Data_outputs/bbal_birdis_habitat_used_ranef.RData")
+ranefs.df2 <- ranefs.df %>% 
+  select(c(season_type, env, season, ring, estimate, intercept)) %>%
+  rename(used_estimate = estimate,
+         used_intercept = intercept) %>%
+  mutate(env = case_when( env == "SST" ~ "sst",
+                          env == "chlA" ~ "chl",
+                          env == "bathy" ~ "bathy"))
+
+rnd_effs.out2 <- rnd_effs.out %>%
+  select(c(season_type, env, season, ring, intercept, slope)) %>%
+  rename(selection_intercept = intercept,
+         selection_slope = slope)
+
+ind_estimates <- merge(ranefs.df2, rnd_effs.out2, by = c("ring", "season", "season_type", "env"), all = T)
+write.csv(ind_estimates, file = "Data_outputs/bbal_birdis_habitat_individual_estimates.csv", row.names = FALSE)
+
+
+```
 
 # Final results
 
@@ -3253,6 +3580,26 @@ For the manuscript, we want to show:
 -   Differences in average habitat use by species
 -   Individual curves for each habitat type by species
 -   Repeatability summaries for each species
+
+
+## Figure SX - Plot used habitat
+
+```{r plot_used}
+
+load("Data_outputs/bbal_birdis_used_plot.RData")
+load("Data_outputs/bbal_ker_used_plot.RData")
+load("Data_outputs/waal_birdis_used_plot.RData")
+load("Data_outputs/waal_cro_used_plot.RData")
+
+png(file = "Figures/MS Figures/FigureSX.png", width = 22, height = 15, units = "in", res = 300)
+ggarrange(bbal_birdis_used_plot, bbal_ker_used_plot,
+          waal_cro_used_plot, waal_birdis_used_plot,
+          ncol = 2, nrow = 2,
+          widths = c(1, 0.8))
+dev.off()
+
+```
+
 
 <!-- #### Habitat preference -->
 

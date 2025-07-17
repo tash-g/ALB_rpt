@@ -39,16 +39,176 @@ invisible(lapply(packages, library, character.only = TRUE))
 options(dplyr.summarise.inform = FALSE)
 select <- dplyr::select
 
-# Set parameters ===============================================================
 
-# Set colony/species
-my_colony <- "bi" # cro bi ker
-my_species <- "bba" # waal bba
 
-colony_exp <- ifelse(my_colony == "ker", "kerguelen",
-                     ifelse(my_colony == "cro", "crozet",
-                            "birdis"))
+# Get sample sizes --------------------------------------------------------
 
+### GLS ----------
+# Change directory to access GLS data
+setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_foraging_proj")
+
+spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
+sample_gls.list <- list()
+runs_gls.list <- list()
+
+for (i in 1:length(spec_col)) {
+  
+  load(paste0("Data_outputs/", spec_col[i], "_gls_labelled_subset.RData"))
+  
+  seasons.table <- gls_labelled.df %>% 
+    group_by(ring) %>%
+    summarise(n_seasons = n_distinct(season)) %>%
+    mutate(spec_col = spec_col[i]) %>%
+    separate(spec_col, into = c("species", "colony"), sep = "_")
+  
+  sample_gls.list[[i]] <- seasons.table
+  
+  
+  #### Duration per individual --------
+  
+  # Get simplified daily dataframe
+  gls_daily <- gls_labelled.df %>% 
+    mutate(date = as.Date(datetime)) %>%
+    group_by(ring, season, date) %>%
+    arrange(date) %>%
+    select(ring, season, date) %>%
+    distinct()
+  
+  # Find number of continuous runs for each individual
+  gls_daily %<>%
+    arrange(ring, season, date) %>%
+    group_by(ring, season) %>%
+    mutate(date_num = as.integer(date),
+           gap = date_num - lag(date_num, default = first(date_num)),
+           new_run = gap != 1,
+           # Create run ID by cumulative sum of new runs (start a new run when gap != 1)
+           run_id = cumsum(new_run) + 1 )
+  
+  # Summarise to get run length and start/end dates per run per bird-colony
+  runs_summary <- gls_daily %>%
+    group_by(ring, season, run_id) %>%
+    summarise(
+      run_start = min(date),
+      run_end = max(date),
+      run_length = n() ) %>%
+    select(-run_id) %>%
+    mutate(spec_col = spec_col[i]) %>%
+    separate(spec_col, into = c("species", "colony"), sep = "_")
+ 
+  runs_gls.list[[i]] <- runs_summary
+  
+}
+
+sample_sizes.gls <- do.call("rbind", sample_gls.list)
+
+sample_sizes.gls %>%
+  mutate(n_seasons_group = case_when(
+      n_seasons == 1 ~ "1_season",
+      n_seasons == 2 ~ "2_seasons",
+      n_seasons == 3 ~ "3_seasons",
+      n_seasons >= 4 ~ "4+_seasons",
+      TRUE ~ NA_character_) ) %>%
+  group_by(species, colony, n_seasons_group) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  pivot_wider(
+    names_from = n_seasons_group,
+    values_from = n,
+    values_fill = 0) %>%
+  mutate( total = `1_season` + `2_seasons` + `3_seasons` + `4+_seasons`)
+
+
+runs_gls <- do.call("rbind", runs_gls.list)
+
+runs_gls %>%
+  group_by(ring) %>%
+  mutate(n_total = sum(run_length)) %>%
+  group_by(species, colony) %>%
+  summarise(mean_dur = mean(n_total),
+            med_dur = median(n_total),
+            sd_dur = sd(n_total),
+            n_birds = n_distinct(ring))
+
+### GPS ---------
+
+setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
+
+sample_gps.list <- list()
+runs_gps.list <- list()
+
+for (i in 1:length(spec_col)) {
+  
+  load(paste0("Data_inputs/", spec_col[i], "_gps_labelled_subset.RData"))
+  
+  seasons.table <- gps_labelled.df %>% 
+    group_by(ring) %>%
+    summarise(n_seasons = n_distinct(season)) %>%
+    mutate(spec_col = spec_col[i]) %>%
+    separate(spec_col, into = c("species", "colony"), sep = "_")
+  
+  sample_gps.list[[i]] <- seasons.table
+  
+  #### Duration per individual --------
+  
+  gps_daily <- gps_labelled.df %>% 
+    mutate(date = as.Date(datetime)) %>%
+    group_by(ring, season, date) %>%
+    arrange(date) %>%
+    select(ring, season, date) %>%
+    distinct() 
+  
+  # Find number of continuous runs for each individual
+  gps_daily %<>%
+    arrange(ring, season, date) %>%
+    group_by(ring, season) %>%
+    mutate(date_num = as.integer(date),
+           gap = date_num - lag(date_num, default = first(date_num)),
+           new_run = gap != 1,
+           # Create run ID by cumulative sum of new runs (start a new run when gap != 1)
+           run_id = cumsum(new_run) + 1 )
+  
+  # Summarise to get run length and start/end dates per run per bird-colony
+  runs_summary <- gps_daily %>%
+    group_by(ring, season, run_id) %>%
+    summarise(
+      run_start = min(date),
+      run_end = max(date),
+      run_length = n() ) %>%
+    select(-run_id) %>%
+    mutate(spec_col = spec_col[i]) %>%
+    separate(spec_col, into = c("species", "colony"), sep = "_")
+  
+  runs_gps.list[[i]] <- runs_summary
+  
+}
+
+sample_sizes.gps <- do.call("rbind", sample_gps.list)
+
+sample_sizes.gps %>%
+  mutate(n_seasons_group = case_when(
+    n_seasons == 1 ~ "1_season",
+    n_seasons == 2 ~ "2_seasons",
+    n_seasons == 3 ~ "3_seasons",
+    n_seasons >= 4 ~ "4+_seasons",
+    TRUE ~ NA_character_) ) %>%
+  group_by(species, colony, n_seasons_group) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  pivot_wider(
+    names_from = n_seasons_group,
+    values_from = n,
+    values_fill = 0) %>%
+  mutate( total = `1_season` + `2_seasons` + `3_seasons` + `4+_seasons`)
+
+
+runs_gps <- do.call("rbind", runs_gps.list)
+
+runs_gps %>%
+  group_by(ring) %>%
+  mutate(n_total = sum(run_length)) %>%
+  group_by(species, colony) %>%
+  summarise(mean_dur = mean(n_total),
+            med_dur = median(n_total),
+            sd_dur = sd(n_total),
+            n_birds = n_distinct(ring))
 
 # ______________________________ ####
 # ~ DATA PROCESSING ~ ###########################################################
@@ -60,82 +220,88 @@ colony_exp <- ifelse(my_colony == "ker", "kerguelen",
 # Change directory to access GLS data
 setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_foraging_proj")
 
-load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gls_labelled.RData"))
+spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
 
-gls_labelled.df %<>%
-  mutate(ring = toupper(ring),
-         ring = gsub(" ", "", ring),
-         ringYr = paste(ring, season, sep = "_")) %>%
-  filter(!is.na(ring))
-
-
-# Load meta data -------------------------------------------------------------
-
-meta_source <- ifelse(colony_exp == "birdis", "BAS", "Chize")
-all_demo <- loadRData(paste0("Data_inputs/", meta_source, "_demo_complete.RData"))
-
-all_demo %<>% mutate(species = tolower(species)) %>% filter(species == my_species) 
-
-## Make dataframe long
-demoA <- all_demo %>% select(-c(bird2_sex, bird2_birthYr)) %>% 
-  dplyr::rename(ring = bird1, sex = bird1_sex, birthYr = bird1_birthYr, partner = bird2) %>%
-  filter(!is.na(ring)) 
-
-demoB <- all_demo %>% select(-c(bird1_sex, bird1_birthYr)) %>% 
-  dplyr::rename(ring = bird2, sex = bird2_sex, birthYr = bird2_birthYr, partner = bird1) %>%
-  filter(!is.na(ring)) 
-
-my_demo <- rbind(demoA, demoB)
-my_demo %<>% group_by(ring, season) %>% tidyr::fill(everything(), .direction = 'updown') %>% distinct()
-
-
-
-# Manual breeding dates ------------------------------------------------------
-
-if (colony_exp == "birdis" & my_species == "waal") {
+for (i in 1:length(spec_col)) {
   
-  median_lay <- "12-01" 
-  median_hatch <- "03-10"
+  load(paste0("Data_inputs/", spec_col[i], "_gls_labelled.RData"))
   
-} else if (colony_exp == "birdis" & my_species == "bba") {
+  gls_labelled.df %<>%
+    mutate(ring = toupper(ring),
+           ring = gsub(" ", "", ring),
+           ringYr = paste(ring, season, sep = "_")) %>%
+    filter(!is.na(ring))
   
-  median_lay <- "10-13"
-  median_hatch <- "01-05"
   
-} else if (colony_exp == "crozet") {
+  # Load meta data -------------------------------------------------------------
   
-  median_lay <- "12-01"
-  median_hatch <- "03-22"
+  meta_source <- ifelse(grepl("birdis", spec_col[i]), "BAS", "Chize")
+  all_demo <- loadRData(paste0("Data_inputs/", meta_source, "_demo_complete.RData"))
   
-} else if (colony_exp == "kerguelen") {
+  all_demo %<>% mutate(species = tolower(species)) %>% filter(species == my_species) 
   
-  median_lay <- "09-25"
-  median_hatch <- "12-15"
+  ## Make dataframe long
+  demoA <- all_demo %>% select(-c(bird2_sex, bird2_birthYr)) %>% 
+    dplyr::rename(ring = bird1, sex = bird1_sex, birthYr = bird1_birthYr, partner = bird2) %>%
+    filter(!is.na(ring)) 
+  
+  demoB <- all_demo %>% select(-c(bird1_sex, bird1_birthYr)) %>% 
+    dplyr::rename(ring = bird2, sex = bird2_sex, birthYr = bird2_birthYr, partner = bird1) %>%
+    filter(!is.na(ring)) 
+  
+  my_demo <- rbind(demoA, demoB)
+  my_demo %<>% group_by(ring, season) %>% tidyr::fill(everything(), .direction = 'updown') %>% distinct()
+  
+  
+  
+  # Manual breeding dates ------------------------------------------------------
+  
+  if (spec_col[i] == "waal_birdis") {
+    
+    median_lay <- "12-01" 
+    median_hatch <- "03-10"
+    
+  } else if (spec_col[i] == "bba_birdis") {
+    
+    median_lay <- "10-13"
+    median_hatch <- "01-05"
+    
+  } else if (spec_col[i] == "waal_cro") {
+    
+    median_lay <- "12-01"
+    median_hatch <- "03-22"
+    
+  } else if (spec_col[i] == "bba_kerguelen") {
+    
+    median_lay <- "09-25"
+    median_hatch <- "12-15"
+  }
+  
+  
+  # Match in metadata and filter to breeding -------------------------------------
+  
+  setDT(my_demo)
+  my_demo %<>% select(ring, season, rs, lay_date, hatch_date, fail_date) %>%
+    mutate(season = as.numeric(season)) %>% distinct()
+  my_demo <- my_demo[, .SD[sample(.N, 1)], by = .(ring, season)]
+  
+  setDT(gls_labelled.df)
+  
+  # Merge using data.table
+  gls_labelled.df <- merge(gls_labelled.df, my_demo, by = c("ring", "season"), all.x = T)
+  
+  ## Cut to breeding
+  hatch_time = ifelse(my_species == "bba", 101, 121)
+  brood_time = ifelse(my_species == "bba", 38, 48) # brooding ends 22/01
+  
+  gls_labelled.df %<>% rename(boutID = tripID)
+  
+  gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
+  
+  save(gls_labelled.df, file = paste0("Data_outputs/", spec_col[i], "_gls_labelled_subset.RData"))
+
 }
-
-
-# Match in metadata and filter to breeding -------------------------------------
-
-setDT(my_demo)
-my_demo %<>% select(ring, season, rs, lay_date, hatch_date, fail_date) %>%
-  mutate(season = as.numeric(season)) %>% distinct()
-my_demo <- my_demo[, .SD[sample(.N, 1)], by = .(ring, season)]
-
-setDT(gls_labelled.df)
-
-# Merge using data.table
-gls_labelled.df <- merge(gls_labelled.df, my_demo, by = c("ring", "season"), all.x = T)
-
-## Cut to breeding
-hatch_time = ifelse(my_species == "bba", 101, 121)
-brood_time = ifelse(my_species == "bba", 38, 48) # brooding ends 22/01
-
-gls_labelled.df %<>% rename(boutID = tripID)
-
-gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
-
-save(gls_labelled.df, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_gls_labelled_subset.RData"))
-
+  
 # +++++++++++++++++++++++++++++ ####
 
 # PROCESS GPS DATA -------------------------------------------------------------

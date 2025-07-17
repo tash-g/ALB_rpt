@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "rptR", "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB")
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB")
 
 # Load packages
 invisible(lapply(packages, library, character.only = TRUE))
@@ -69,7 +69,7 @@ save(rep_data, file = "Data_inputs/behavioural_repeatability_data.RData")
 
 ```
 
-```{r histograms_for_bertille, eval = FALSE}
+```{r foraging_effort_bertille, eval = FALSE}
 
 rep_data %<>% mutate(landings_per_day = landing/duration.days)
 
@@ -107,6 +107,11 @@ ggplot(ring_ranefs, aes(x = estimate, y = reorder(ring, estimate))) +
   theme(axis.text.y = element_blank())
 
 
+# Get summarised data
+behav.df <- rep_data %>%
+              select(c(species, colony, ring, season, landing, duration.days, duration.hrs, phase))
+
+write.csv(behav.df, file = "Data_outputs/behaviour_summarised.csv", row.names = F)
 
 ```
 
