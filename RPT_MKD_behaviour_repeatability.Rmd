@@ -7,6 +7,13 @@ output:
     toc_float: true
     toc_depth: 4
 ---
+### SETUP
+
+**Note:** Naming conventions for files:
+  - Bird Island = birdis
+  - Crozet = cro
+  - Kerguelen = ker
+  - Chlorophyll = chl
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
@@ -15,7 +22,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB")
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB", "ggridges", "brms", "MCMCglmm", "igraph")
 
 # Load packages
 invisible(lapply(packages, library, character.only = TRUE))
@@ -26,6 +33,9 @@ options(dplyr.summarise.inform = FALSE)
 # Make sure using dplyr select
 select <- dplyr::select
 
+# Set colours
+col_within <- "#91c5f2"
+col_between <- "#0b3860"
 
 # Load & process data ==========================================================
 
@@ -65,6 +75,8 @@ rep_data <- trip_data %>%
 
 
 save(rep_data, file = "Data_inputs/behavioural_repeatability_data.RData")
+
+
 
 
 ```
@@ -207,7 +219,22 @@ load("Data_inputs/behavioural_repeatability_data.RData")
 # Remove zero values
 rep_data %<>% filter(rowSums(select(., transitions, transit_time.pct, transit_to_rest.ratio) == 0) == 0)
 
-rep_bba <- rep_data %>% filter(species == "bba")
+# Get time since first trip for each bird/season
+rep_data %<>%
+  group_by(ring, season) %>%
+  mutate(time_since_first = as.numeric(difftime(start_date, min(start_date), units = "days"))) %>%
+  ungroup()
+
+# Filter birds where have fewer than 3 repeats within a year
+rep_data %<>% 
+ group_by(ring_season) %>%
+ mutate(n_trips = n_distinct(start_date)) %>%
+ filter(n_trips >= n_reps[n]) %>%
+ select(-n_trips) %>%
+ ungroup()
+
+# Split data
+rep_bbal <- rep_data %>% filter(species == "bba")
 rep_waal <- rep_data %>% filter(species == "waal")
 
 # Trying different response variables and examining repeatability
@@ -220,194 +247,684 @@ for (i in 1:length(cov)) {
   print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
   
   cov_value <- paste0("log(", cov[i], ")")
-  formula <- paste0(cov_value, " ~ (1 | ring) + (1 | season) + (1 | ring_season) + phase + colony + age")
+  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring ) + (1 + time_since_first | ring_season)")
   
-  # Bootstrap repeatability
-  print("Bootstrapping repeatability...")
-  tok <- Sys.time() 
+  # Fit models
   
-   ## BBAL ##
-   rpt.bba <- lmer(formula, rep_bba)
-   vars.bba <- extract_var(rpt.bba)
-   repeatability_output.bba <- suppressWarnings(boot_rpt(1000, rep_bba, formula))
- 
-   ## WAAL ##
-   rpt.waal <- lmer(formula, rep_waal)
-   vars.waal <- extract_var(rpt.waal)
-   repeatability_output.waal <- suppressWarnings(boot_rpt(1000, rep_waal, formula))
+  ## WAAL ## ----
+  print("Processing wanderers...")
 
- 
-  tik <- Sys.time()
-  tik-tok 
+  ### Crozet ### ----
+  waal_cro.brm_rpt <- brm(
+      formula = formula,
+      data = rep_waal %>% filter(colony == "crozet"),
+      family = gaussian(),  
+      cores = 4, chains = 4, iter = 4000,
+      control = list(adapt_delta = 0.95))
+    
+  # Calc repeatability
+  posterior <- as_draws_df(waal_cro.brm_rpt)
+  x_mean <- mean((rep_waal%>% filter(colony == "crozet"))$time_since_first)
   
-  ### Summarise repeatability output ----
-
-  rpt_summary.bba <- cbind(vars.bba, repeatability_output.bba)
-
-  rpt_summary.bba$group <- rownames(rpt_summary.bba)
-  rpt_summary.bba$group = gsub("_var", "", rpt_summary.bba$group)
-  rownames(rpt_summary.bba) <- NULL
-
-  rpt_summary.bba %<>%
-    mutate(species = "BBAL",
-           parameter = cov[i],
-           R = paste0(signif(est, 2), " \u00B1 ", signif(se, 2)),
-           group = gsub("se_", "", group)) %>%
-    relocate(c(group, R), .before = se) %>%
-    select(-c(est, se)) %>%
-    pivot_wider(
-      names_from = group,
-      values_from = c(R, ci, var),
-      names_glue = "{group}_{.value}"
-    ) %>%
-    relocate(species, parameter, annual_var, 
-             within_var, within_R, within_ci, 
-             between_var, between_R, between_ci) %>%
-    relocate(species, parameter, annual_var, 
-             within_var, within_R, within_ci,
-             between_var, between_R, between_ci) %>%
-    mutate(sample_size = paste0(nrow(rep_bba), ", ", n_distinct(rep_bba$ring)))
-
-  # WAAL
+  waal_cro.post_df <- data.frame(cbind(calc_rpt_brms(waal_cro.brm_rpt, rep_waal %>% filter(colony == "crozet"), x_mean)),
+                             behaviour = cov[i],
+                             species = "WAAL",
+                             colony = "Crozet")
   
-  rpt_summary.waal <- cbind(vars.waal, repeatability_output.waal)
+  mod_name <- paste0("waal_cro.brm_rpt_", cov[i])
+  assign(mod_name, waal_cro.brm_rpt)
   
-  rpt_summary.waal$group <- rownames(rpt_summary.waal)
-  rpt_summary.waal$group = gsub("_var", "", rpt_summary.waal$group)
-  rownames(rpt_summary.waal) <- NULL
+  save(list = mod_name, file = paste0("Data_outputs/waal_cro_brms_behaviour_repeatability_", cov[i], ".RData"))
+  
+  ### Bird Island ### ----
+   waal_birdis.brm_rpt <- brm(
+    formula = formula,
+    data = rep_waal %>% filter(colony == "birdis"),
+    family = gaussian(),  
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Calc repeatability
+  posterior <- as_draws_df(waal_birdis.brm_rpt)
+  x_mean <- mean((rep_waal %>% filter(colony == "birdis"))$time_since_first)
+  
+  waal_birdis.post_df <- data.frame(cbind(calc_rpt_brms(waal_birdis.brm_rpt, rep_waal %>% filter(colony == "birdis"), x_mean)),
+                              behaviour = cov[i],
+                              species = "WAAL",
+                              colony = "Bird Island")
+    
+  mod_name <- paste0("waal_birdis.brm_rpt", cov[i])
+  assign(mod_name, waal_birdis.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Data_outputs/waal_birdis_brms_behaviour_repeatability_", cov[i], ".RData"))
+  
+  
+  ## BBAL ## ----
+  print("Processing black-browed...")
 
-  rpt_summary.waal %<>%
-    mutate(species = "WAAL",
-           parameter = cov[i],
-           R = paste0(signif(est, 2), " \u00B1 ", signif(se, 2)),
-           group = gsub("se_", "", group)) %>%
-    relocate(c(group, R), .before = se) %>%
-    select(-c(est, se)) %>%
-    pivot_wider(
-      names_from = group,
-      values_from = c(R, ci, var),
-      names_glue = "{group}_{.value}"
-    ) %>%
-    relocate(species, parameter, annual_var, 
-             within_var, within_R, within_ci,
-             between_var, between_R, between_ci) %>%
-    mutate(sample_size = paste0(nrow(rep_waal), ", ", n_distinct(rep_waal$ring)))
+  ### Kerguelen ### ----
+  bbal_ker.brm_rpt <- brm(
+      formula = formula,
+      data = rep_bbal %>% filter(colony == "kerguelen"),
+      family = gaussian(),  
+      cores = 4, chains = 4, iter = 4000,
+      control = list(adapt_delta = 0.95))
+    
+  # Calc repeatability
+  posterior <- as_draws_df(bbal_ker.brm_rpt)
+  x_mean <- mean((rep_bbal%>% filter(colony == "kerguelen"))$time_since_first)
+  
+  bbal_ker.post_df <- data.frame(cbind(calc_rpt_brms(bbal_ker.brm_rpt, rep_bbal %>% filter(colony == "kerguelen"), x_mean)),
+                             behaviour = cov[i],
+                             species = "BBAL",
+                             colony = "Kerguelen")
+  
+  mod_name <- paste0("bbal_ker.brm_rpt_", cov[i])
+  assign(mod_name, bbal_ker.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Data_outputs/bbal_ker_brms_behaviour_repeatability_", cov[i], ".RData"))
+  
+  ### Bird Island ### ----
+  bbal_birdis.brm_rpt <- brm(
+    formula = formula,
+    data = rep_bbal %>% filter(colony == "birdis"),
+    family = gaussian(),  
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Calc repeatability
+  posterior <- as_draws_df(bbal_birdis.brm_rpt)
+  x_mean <- mean((rep_bbal %>% filter(colony == "birdis"))$time_since_first)
+  
+  bbal_birdis.post_df <- data.frame(cbind(calc_rpt_brms(bbal_birdis.brm_rpt, rep_bbal %>% filter(colony == "birdis"), x_mean)),
+                              behaviour = cov[i],
+                              species = "BBAL",
+                              colony = "Bird Island")
+    
+  mod_name <- paste0("bbal_birdis.brm_rpt", cov[i])
+  assign(mod_name, bbal_birdis.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Data_outputs/bbal_birdis_brms_behaviour_repeatability_", cov[i], ".RData"))
   
   # Output summary
-  rpt_output.list[[i]] <- rbind(rpt_summary.bba, rpt_summary.waal)
+  rpt_output.list[[i]] <- rbind(waal_cro.post_df, waal_birdis.post_df,
+                                bbal_ker.post_df, bbal_birdis.post_df)
    
 }
 
 rpt_output.full <- do.call("rbind", rpt_output.list)
 rpt_output.full %<>% arrange(species)
 
+# Get sample sizes and add them in
+rep_samples <- rep_data %>% 
+  group_by(colony, species) %>% 
+  summarise(n_trips = n_distinct(start_date), n_birds = n_distinct(ring)) %>% 
+  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
+         colony = case_when(colony == "birdis" ~ "Bird Island",
+                            colony == "crozet" ~ "Crozet",
+                            colony == "kerguelen" ~ "Kerguelen"))
+
+rpt_output.full %<>% left_join(rep_samples, by = c("colony", "species"))
+
 save(rpt_output.full, file = "Data_outputs/behavioural_repeatability_results.RData")
 
+
+# Model checking code
+# plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+# pp_check(bbal_birdis.brm_rpt)
+# 
+# pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+
 ```
+
 
 ### Repeatability results
 
 ```{r repeatability_table}
 
 load("Data_outputs/behavioural_repeatability_results.RData")
-rpt_output.full %<>% filter(parameter != "max_distance.km" & parameter != "total_distance.km")
 
 # Reorder for table
-rpt_output.full$parameter <- factor(rpt_output.full$parameter, levels = rev(c(
+rpt_output.full$behaviour <- factor(rpt_output.full$behaviour, levels = rev(c(
   "transit_to_rest.ratio",
   "transit_time.pct",
   "rest_time.pct",
   "transitions",
-  "duration.hrs"
-)))
+  "duration.hrs")))
 
-rpt_output.full <- rpt_output.full %>%
-  arrange(species, parameter) 
+rpt_output.full %<>% arrange(species, behaviour) 
 
+# Summarise output
+rpt_summary <- rpt_output.full %>%
+  group_by(species, colony, behaviour) %>%
+  summarise(var_ringSeason_x = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_ringSeason_x),
+              quantile(var_ringSeason_x, 0.025),
+              quantile(var_ringSeason_x, 0.975)),
+      
+            var_ring = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_ring),
+              quantile(var_ring, 0.025),
+              quantile(var_ring, 0.975)),
+      
+            var_season = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_season),
+              quantile(var_season, 0.025),
+              quantile(var_season, 0.975)),
+      
+            var_resid = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_resid),
+              quantile(var_resid, 0.025),
+              quantile(var_resid, 0.975)),
+      
+            sd_slope = sprintf("%.2f [%.2f, %.2f]",
+              mean(sd_slope),
+              quantile(sd_slope, 0.025),
+              quantile(sd_slope, 0.975)),
+      
+            rpt_within = sprintf("%.2f [%.2f, %.2f]",
+              mean(rpt_within),
+              quantile(rpt_within, 0.025),
+              quantile(rpt_within, 0.975)),
+      
+            rpt_across = sprintf("%.2f [%.2f, %.2f]",
+              mean(rpt_across),
+              quantile(rpt_across, 0.025),
+              quantile(rpt_across, 0.975)),
+                  
+            n_trips = n_trips[1],
+            n_birds = n_birds[1]) %>%
+  select(-sd_slope)
 
-kable(rpt_output.full, format = "html", 
-      caption = 'Table 2. Repeatability parameters for each species. Sample sizes are for trips, individuals.',
-      digits = 2) %>%
-  row_spec(5, extra_css = "border-bottom: 1px solid;") %>%
-  column_spec(2, extra_css = "border-left: 1px solid;") %>%
-  column_spec(c(3,4,7,10), extra_css = "border-left: 1px dashed;") %>%
-  collapse_rows(columns = c(1,10)) %>%
+# Make table
+kable(rpt_summary, format = "html", 
+      caption = 'Table 2. Repeatability parameters for each species. Sample sizes are for trips, individuals.') %>%
+  kable_styling("striped", full_width = FALSE) %>%
+  column_spec(1, background = "white") %>%  # remove stripe from column 1
+  column_spec(2, background = "white") %>%  # remove stripe from column 2
+  collapse_rows(columns = c(1,2,10, 11)) %>%
   kable_classic(font_size = 12)
+
 
 ```
 
-```{r repeatability_figure, fig.cap = "Figure 1. Summary of bootstrapped repeatability values for each species. Grey intervals indicate R < 0.1 (darker interval), where repeatability is deemed to be neglibile, and 0.1 < R < 0.3, where repeatabiltiy is deemed to be low-modest. Repeatability values greater than this may be considered biologically interesting." , fig.topcaption = TRUE}
+#### Figure X: Repeatability by species & colony
 
-# Make dataframe long
+```{r repeatability_figure, fig.cap = "Figure 1. Summary of repeatability values for each species.", fig.topcaption = TRUE}
+
+## Recode behaviour
+rpt_output.full %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"),
+      behaviour = factor(behaviour),              
+      behaviour = forcats::fct_rev(behaviour))
+
+# Pivot data longer for faceted plotting
 rpt_long <- rpt_output.full %>%
-  select(species, parameter,
-         within_R, between_R,
-         within_ci, between_ci) %>%
-  pivot_longer(
-    cols = starts_with(c("within_", "between_")),
-    names_to = c("type", ".value"),
-    names_pattern = "(.*)_(.*)"
-  ) %>%
-  separate(ci, into = c("ci_lower", "ci_upper"), sep = ", ", convert = TRUE) %>%
-  mutate(
-    ci_lower = as.numeric(str_remove(ci_lower, "\\[")),
-    ci_upper = as.numeric(str_remove(ci_upper, "\\]")),
-    R = as.numeric(str_extract(R, "\\d+\\.\\d+")),  # Extract point estimate only
-    type = factor(type, levels = c("between", "within"))  
-  )
-
-## Reorder for plotting
-rpt_long$parameter <- factor(rpt_long$parameter, levels = c(
-  "transit_to_rest.ratio",
-  "transit_time.pct",
-  "rest_time.pct",
-  "transitions",
-  "duration.hrs"
-))
+  mutate(rpt_within_total = rpt_within + rpt_across) %>%
+  pivot_longer(cols = c(rpt_within_total, rpt_within, rpt_across),
+               names_to = "repeatability_type",
+               values_to = "rpt") %>%
+  filter(repeatability_type != "rpt_within") %>%
+  mutate(spec_col = paste(species, colony, sep = " "))
 
 
-# Set colours
-col_within <- "#91c5f2"
-col_between <- "#0b3860"
-
-# Build plot
-rptplot <- 
-  ggplot(rpt_long, aes(x = R, y = parameter, color = type)) +
-  annotate("rect", xmin = -Inf, xmax = 0.1, ymin = -Inf, ymax = Inf,
-           fill = "grey80", alpha = 0.5) +
-  annotate("rect", xmin = 0.1, xmax = 0.3, ymin = -Inf, ymax = Inf,
-           fill = "grey80", alpha = 0.2) +
-  scale_colour_manual(values = c(col_between, col_within),
+rptplot <- ggplot(rpt_long, aes(x = rpt, y = behaviour, fill = repeatability_type)) +
+  geom_density_ridges(alpha = 0.6, scale = 1) +
+  facet_wrap(~spec_col, nrow = 2, scales = "free") +
+   scale_fill_manual(values = c(col_between, col_within),
                       labels = c("Between-season", "Within-season")) +
-  scale_y_discrete(labels = c(
-    "duration.hrs" = "Trip duration (hrs)",
-    "transitions" = "Number of landings",
-    "transit_time.pct" = "Flight time (% trip)",
-    "rest_time.pct" = "Rest time (% trip)",
-    "transit_to_rest.ratio" = "Ratio flight to rest (%)"
-  )) +
-  geom_point(position = position_dodge(width = 0.5)) +
-  geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper),
-                 position = position_dodge(width = 0.5), height = 0.2) +
-  facet_wrap(~ species) +
-  labs(x = "Repeatability (\u00B1 95% CI)") +
+  labs(x = "Posterior distribution for repeatability", y = "") +
   theme_bw() +
-  theme(legend.title = element_blank(),
-        legend.position = "top",
-        axis.title.y = element_blank())
+  theme(legend.position = "none")
 
-png(rptplot, filename = "Figures/MS Figures/FIGx_behaviour_repeatability.png", width = 8, height = 6, units = "in", res = 900)
+
+png(filename = "Figures/MS Figures/FIGx_behaviour_repeatability.png", width = 12, height = 10, units = "in", res = 900)
 rptplot
 dev.off()
 
 
+
+######
+
+# # Make dataframe long
+# rpt_long <- rpt_output.full %>%
+#   select(species, parameter,
+#          within_R, between_R,
+#          within_ci, between_ci) %>%
+#   pivot_longer(
+#     cols = starts_with(c("within_", "between_")),
+#     names_to = c("type", ".value"),
+#     names_pattern = "(.*)_(.*)"
+#   ) %>%
+#   separate(ci, into = c("ci_lower", "ci_upper"), sep = ", ", convert = TRUE) %>%
+#   mutate(
+#     ci_lower = as.numeric(str_remove(ci_lower, "\\[")),
+#     ci_upper = as.numeric(str_remove(ci_upper, "\\]")),
+#     R = as.numeric(str_extract(R, "\\d+\\.\\d+")),  # Extract point estimate only
+#     type = factor(type, levels = c("between", "within"))  
+#   )
+# 
+# ## Reorder for plotting
+# rpt_long$parameter <- factor(rpt_long$parameter, levels = c(
+#   "transit_to_rest.ratio",
+#   "transit_time.pct",
+#   "rest_time.pct",
+#   "transitions",
+#   "duration.hrs"
+# ))
+# 
+# 
+# # Set colours
+# col_within <- "#91c5f2"
+# col_between <- "#0b3860"
+# 
+# # Build plot
+# rptplot <- 
+#   ggplot(rpt_long, aes(x = R, y = parameter, color = type)) +
+#   annotate("rect", xmin = -Inf, xmax = 0.1, ymin = -Inf, ymax = Inf,
+#            fill = "grey80", alpha = 0.5) +
+#   annotate("rect", xmin = 0.1, xmax = 0.3, ymin = -Inf, ymax = Inf,
+#            fill = "grey80", alpha = 0.2) +
+#   scale_colour_manual(values = c(col_between, col_within),
+#                       labels = c("Between-season", "Within-season")) +
+#   scale_y_discrete(labels = c(
+#     "duration.hrs" = "Trip duration (hrs)",
+#     "transitions" = "Number of landings",
+#     "transit_time.pct" = "Flight time (% trip)",
+#     "rest_time.pct" = "Rest time (% trip)",
+#     "transit_to_rest.ratio" = "Ratio flight to rest (%)"
+#   )) +
+#   geom_point(position = position_dodge(width = 0.5)) +
+#   geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper),
+#                  position = position_dodge(width = 0.5), height = 0.2) +
+#   facet_wrap(~ species) +
+#   labs(x = "Repeatability (\u00B1 95% CI)") +
+#   theme_bw() +
+#   theme(legend.title = element_blank(),
+#         legend.position = "top",
+#         axis.title.y = element_blank())
+
 ```
 
-### Supplementary analyses
+### Testing for heritability
 
-#### How does repeatability change with the number of individual repeats?
+```{r waal_cro_behaviour_heritability }
 
-I have a lot of variation in the number of seasons' worth of data are available per individual. To test whether this might be affecting my estimates, here I have rerun the analyses using data that have been sampled to individuals with more than or equal to 3, or 4 repeat seasons respectively.
+# (1) Load and subsample the data  ----
+load("Data_inputs/behavioural_repeatability_data.RData")
+
+# Remove zero values
+rep_data %<>% filter(rowSums(select(., transitions, transit_time.pct, transit_to_rest.ratio) == 0) == 0)
+rep_data %<>% filter(species == "waal" & colony == "crozet")
+
+pedigree.df <- read.csv("Data_inputs/waal_crozet_pedigree.csv")
+pedigree.df %<>% dplyr::select(-Year)
+
+
+# (2) Check the pedigree  ----
+
+## Are the ID in rep_data the same as id in pedigree.df?
+pedigree.df$id <- as.character(pedigree.df$id)
+rep_data$ring <- as.character(rep_data$ring)
+
+model_ids <- unique(rep_data$ring)
+pedigree_ids <- pedigree.df$id
+
+### IDs in model AND pedigree
+ids_in_both <- intersect(model_ids, pedigree_ids)
+
+### IDs in model NOT in pedigree
+ids_missing_from_pedigree <- setdiff(model_ids, pedigree_ids)
+
+### IDs in pedigree NOT in model (optional info)
+ids_unused_in_model <- setdiff(pedigree_ids, model_ids)
+
+
+# (3) Subset the pedigree to include all ancestors  ----
+
+## Check formatting
+pedigree.df$id <- as.character(pedigree.df$id)
+pedigree.df$dam <- as.character(pedigree.df$dam)
+pedigree.df$sire <- as.character(pedigree.df$sire)
+rep_data$ring <- as.character(rep_data$ring)
+
+## Function to recursively get ancestors
+get_ancestors <- function(ids, pedigree) {
+  all_ids <- ids
+  new_ids <- ids
+  
+  repeat {
+    # Get dams and sires of current new_ids
+    parents <- pedigree[pedigree$id %in% new_ids, c("dam", "sire")]
+    parents <- unique(na.omit(unlist(parents)))
+    
+    # Stop if no new parents found
+    parents <- setdiff(parents, all_ids)
+    if (length(parents) == 0) break
+    
+    # Add new parents to the list
+    all_ids <- c(all_ids, parents)
+    new_ids <- parents
+  }
+  
+  return(unique(all_ids))
+}
+
+model_ids <- unique(rep_data$ring)
+ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
+length(ped_ids_needed)
+
+## Subset the pedigree
+pedigree.pruned <- pedigree.df[pedigree.df$id %in% ped_ids_needed, ]
+
+## Check for missing IDs
+setdiff(model_ids, pedigree.pruned$id) 
+
+## Add these as founders
+missing_ids <- setdiff(model_ids, pedigree.pruned$id)
+founders <- data.frame(id = missing_ids, dam = NA, sire = NA)
+
+### Append to your original pedigree
+pedigree.extended <- rbind(pedigree.df, founders)
+
+### Now prune the extended version
+ped_ids_needed <- get_ancestors(model_ids, pedigree.extended)
+pedigree.pruned <- pedigree.extended[pedigree.extended$id %in% ped_ids_needed, ]
+
+setdiff(model_ids, pedigree.pruned$id)
+
+
+# (4) Visualise the pruned pedigree  ----
+
+edges <- pedigree.pruned %>%
+  tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
+  dplyr::select(from = value, to = id)
+
+## Build igraph object
+ped_graph <- graph_from_data_frame(edges, directed = TRUE)
+
+plot(ped_graph,
+     vertex.size = 3,
+     vertex.label = NA,
+     edge.arrow.size = 0.2,
+     layout = layout_with_sugiyama(ped_graph)$layout)
+
+
+# (5) Look at the genetic matrix A  ----
+
+ped <- pedigree.pruned
+names(ped) <- c("animal", "dam", "sire")
+
+Ainv <- inverseA(ped)$Ainv
+A <- as.matrix(solve(Ainv))
+
+## Inspect sparse matrix
+A_sparse <- as(A, "dgCMatrix")
+summary(A_sparse)
+
+### Check how many non-zero off-diagonal elements
+nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
+density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
+cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
+
+library(pheatmap)
+pheatmap(as.matrix(A), show_rownames = FALSE, show_colnames = FALSE)
+
+
+
+# (6) Fit the models ----
+
+cov <- c("duration.hrs", "transitions", "transit_time.pct", "rest_time.pct", "transit_to_rest.ratio")
+rep_data$animal <- rep_data$ring
+
+rep_data$animal_shuffled <- sample(rep_data$animal)
+
+posteriors_list <- list()
+
+for (i in 1:length(cov)) {
+  
+  print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
+  
+  cov_value <- paste0("log(", cov[i], ")")
+  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring_season) + (1 | gr(animal, cov = A))")
+  
+  mod_brm <- brm(
+    formula = formula,
+    data = rep_data,
+    family = gaussian(),  
+    data2 = list(A = A),  # your pedigree relatedness matrix
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Get posteriors 
+  posterior <- as_draws_df(mod_brm)
+ 
+  sd_animal <- posterior$sd_animal__Intercept
+  var_animal  <- posterior$sd_animal__Intercept^2
+  var_season  <- posterior$sd_season__Intercept^2
+  var_resid   <- posterior$sigma^2
+  h2_post <- var_animal / (var_animal + var_season + var_resid)
+  
+  posterior.df <- data.frame(cbind(sd_animal, var_animal, var_season, var_resid, h2_post),
+                             behaviour = cov[i])
+  
+  posteriors_list[[i]] <- posterior.df
+ 
+  # Output model
+  mod_name <- paste0("mod_brm_", cov[i])
+  assign(mod_name, mod_brm)
+  
+  save(list = mod_name, file = paste0("Data_outputs/waal_crozet_brms_behaviour_heritability_", cov[i], ".RData"))
+    
+}
+
+posteriors.all <- do.call("rbind", posteriors_list)
+save(posteriors.all, file = "Data_outputs/TEMP_waal_cro_behavioural_heritability_posteriors.RData")
+
+
+# (7) Visualise results  ----
+
+# Model checking
+plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+pp_check(mod_brm)
+
+pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+
+# Heritability 
+posteriors.all %<>%
+  group_by(behaviour) %>%
+  mutate(mean_h2 = mean(h2_post, na.rm = TRUE))
+
+posteriors.all$behaviour <- reorder(posteriors.all$behaviour, posteriors.all$mean_h2)
+
+## Recode behaviour
+posteriors.all %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"))
+
+ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
+  stat_density_ridges(fill = "skyblue", alpha = 0.7, quantile_lines = TRUE, quantiles = 2, vline_colour = "magenta4", vline_size = 1, vline_type = "dotted") +
+  theme_bw() +
+  labs(x = "Posterior heritability (h²)", y = "",
+       title = "Posterior destributions of heritability for WAAL at Crozet") +
+  xlim(0, NA) 
+
+### To play with - shaded CI
+
+# First, compute summary statistics
+h2_mean <- mean(h2_post)
+h2_ci <- quantile(h2_post, probs = c(0.025, 0.975))
+
+# Create data frame
+posterior.df <- data.frame(h2_post = h2_post)
+
+# Plot
+ggplot(posterior.df, aes(x = h2_post)) +
+  geom_density(fill = "skyblue", alpha = 0.4, color = NA) +
+  stat_function(fun = function(x) dnorm(x, mean = h2_mean, sd = sd(h2_post)), 
+                geom = "line", color = "skyblue4", linetype = "dashed") +
+  geom_vline(xintercept = h2_mean, color = "blue", linetype = "solid") +
+  geom_vline(xintercept = h2_ci, color = "red", linetype = "dashed") +
+  annotate("rect", xmin = h2_ci[1], xmax = h2_ci[2], ymin = 0, ymax = Inf, 
+           fill = "red", alpha = 0.1) +
+  labs(
+    title = "Posterior distribution of heritability (h²)",
+    x = "Heritability (h²)", y = "Density"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+## Supplementary analyses
+
+### How does repeatability change with the number of individual repeats?
+
+I have a lot of variation in the number of seasons' worth of data are available per individual. To test whether this might be affecting my estimates, here I have rerun the analyses using data that have been sampled to individuals with more than or equal 2, 3, or 4 trip repeats (within a season).
+
+To speed things up, I'm calculating repeatability using simple linear model versions of the brms models, as I'm not concerned about uncertainty here.
+
+Repeatability values stabilise at >=3 repeats per individual-year so ensuring this filter is included in the main analysis.
+
+```{r SUPPLEMENTARY_repeatability_by_repeats_models}
+
+load("Data_inputs/behavioural_repeatability_data.RData")
+
+# Remove zero values
+rep_data %<>% filter(rowSums(select(., transitions, transit_time.pct, transit_to_rest.ratio) == 0) == 0)
+
+# Get time since first trip for each bird/season
+rep_data %<>%
+  group_by(ring, season) %>%
+  mutate(time_since_first = as.numeric(difftime(start_date, min(start_date), units = "days"))) %>%
+  ungroup()
+
+# Split data
+rep_bbal <- rep_data %>% filter(species == "bba")
+rep_waal <- rep_data %>% filter(species == "waal")
+
+cov <- c("duration.hrs", "transitions", "transit_time.pct", "rest_time.pct", "transit_to_rest.ratio")
+
+n_reps <- c(2,3,4,5)
+
+rep_testing.output <- list()
+index <- 1 
+
+for (i in 1:length(cov)) {
+  
+  for (n in 1:length(n_reps)) {
+  
+  print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
+  
+  cov_value <- paste0("log(", cov[i], ")")
+  formula <- paste0(cov_value, " ~ (1 | ring) + (1 | season) + (1 | ring_season) + phase + age")
+  
+  # Subset to n_reps
+  rep_bbal.sub <- rep_bbal %>% 
+    group_by(ring_season) %>%
+    mutate(n_trips = n_distinct(start_date)) %>%
+    filter(n_trips >= n_reps[n])
+  
+  rep_waal.sub <- rep_waal %>% 
+    group_by(ring_season) %>%
+    mutate(n_trips = n_distinct(start_date)) %>%
+    filter(n_trips >= n_reps[n])
+  
+  ## BBAL ##
+  bbal_birdis.lmm <- lmer(formula, rep_bbal.sub %>% filter(colony == "birdis"))
+  bbal_ker.lmm <- lmer(formula, rep_bbal.sub %>% filter(colony == "kerguelen"))
+  
+  bbal_birdis.rpt <- data.frame(level = c("annual", "within_season", "between_season"),
+                                rpt = extract_rpt(bbal_birdis.lmm),
+                                species = "bbal",
+                                colony = "birdis")
+  
+  bbal_ker.rpt <- data.frame(level = c("annual", "within_season", "between_season"),
+                                rpt = extract_rpt(bbal_ker.lmm),
+                                species = "bbal",
+                                colony = "kerguelen")
+  
+  ## WAAL ##
+  waal_birdis.lmm <- lmer(formula, rep_waal.sub %>% filter(colony == "birdis"))
+  waal_cro.lmm <- lmer(formula, rep_waal.sub %>% filter(colony == "crozet"))
+  
+  waal_birdis.rpt <- data.frame(level = c("annual", "within_season", "between_season"),
+                                rpt = extract_rpt(waal_birdis.lmm),
+                                species = "waal",
+                                colony = "birdis")
+  
+  waal_cro.rpt <- data.frame(level = c("annual", "within_season", "between_season"),
+                                rpt = extract_rpt(waal_cro.lmm),
+                                species = "waal",
+                                colony = "crozet")
+ 
+  rep_all <- rbind(bbal_birdis.rpt, bbal_ker.rpt, waal_birdis.rpt, waal_cro.rpt) %>%
+                mutate(behaviour = cov[i],
+                       n_trips = n_reps[n]) %>%
+                relocate(species, colony, behaviour, n_trips, level, rpt)
+  
+  rep_testing.output[[index]] <- rep_all
+  index <- index + 1
+
+  }
+   
+}
+
+rep_testing.all <- bind_rows(rep_testing.output)
+rep_testing.all %<>% arrange(species)
+
+save(rep_testing.all, file = "Data_outputs/SUPP_behaviour_rpt_test_Ntrips.RData")
+
+```
+
+#### Figure SX: Repeatability by repeats
+
+```{r SUPPLEMENTARY_repeatability_by_repeats_figure}
+
+load("Data_outputs/SUPP_behaviour_rpt_test_Ntrips.RData")
+
+rep_testing.all %<>%
+  mutate(spec_col = case_when( colony == "kerguelen" ~ "BBAL Kerguelen",
+                               colony == "crozet" ~ "WAAL Crozet",
+                               colony == "birdis" & species == "bbal" ~ "BBAL Birdisland",
+                               TRUE ~ "WAAL Bird Island"),
+         behaviour = recode(behaviour,
+                "duration.hrs" = "Trip duration",
+                "transitions" = "Landings",
+                "transit_time.pct" = "Flight time",
+                "rest_time.pct" = "Rest time",
+                "transit_to_rest.ratio" = "Flight:Rest ratio"),
+        behaviour = factor(behaviour),              
+        behaviour = forcats::fct_rev(behaviour)) %>%
+  filter(level != "annual")
+
+rpt_test.plot <- ggplot(rep_testing.all, aes(x = n_trips, y = rpt, group = level, col = level)) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = c(col_between, col_within),
+                   labels = c("Between season", "Within-season")) +
+  labs(x = "Minimum number of trips per individual-year", y = "Estimated repeatability") +
+  facet_grid(spec_col ~ behaviour) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+png(filename = "Figures/MS Figures/FIGSx_repeatability_by_sample.png", width = 12, height = 10, units = "in", res = 900)
+rpt_test.plot
+dev.off()
+
+
+```
 
 ```{r supplementary_subsample_by_repeats}
 
@@ -591,7 +1108,7 @@ rptplot.seasons
 
 ```
 
-#### Does repeatability depend on breeding phase?
+### Does repeatability depend on breeding phase?
 
 Behaviour may be very different between incubation and brooding. Although I account for breeding phase in my models, it's important to check whether there are major differences between the breeding phases that could preclude fitting them in a single model.
 
