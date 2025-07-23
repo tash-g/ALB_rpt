@@ -1,4 +1,8 @@
 
+# * CALCULATE REPEATABILITY (brms) * ------------------------------------------
+
+
+
 # * DATA PROCESSING * -----------------------------------------------------
 
 cut_to_breeding <- function(data, medLay, medHatch, hatchTime, broodTime) {
@@ -344,6 +348,50 @@ calc_repeatability <- function(focal_var, additional_var, additional_var2, resid
   return(focal_var / (focal_var + additional_var + additional_var2 + resid_var))
 }
 
+
+
+
+
+calc_rpt_brms <- function(brm_model, data, x_mean) {
+  # Extract posterior draws as dataframe
+  posterior <- as_draws_df(brm_model)
+  
+  # Extract SDs and correlations from posterior
+  sd_ring_season <- posterior$sd_ring_season__Intercept
+  sd_slope <- posterior$sd_ring_season__time_since_first
+  cor_is <- posterior$cor_ring_season__Intercept__time_since_first
+  
+  var_ring_season_intercept <- sd_ring_season^2
+  var_slope <- sd_slope^2
+  var_ring <- posterior$sd_ring__Intercept^2
+  var_season <- posterior$sd_season__Intercept^2
+  var_resid <- posterior$sigma^2
+  
+  # Calculate ring_season variance including slope variance & covariance
+  var_ringSeason_x <- var_ring_season_intercept +
+    (x_mean^2) * var_slope +
+    2 * x_mean * cor_is * sd_ring_season * sd_slope
+  
+  # Total variance
+  total_var <- var_ringSeason_x + var_ring + var_season + var_resid
+  
+  # Repeatabilities
+  rpt_within <- var_ringSeason_x / total_var
+  rpt_across <- var_ring / total_var
+  
+  # Combine into tibble/data.frame with all posterior draws
+  result <- tibble(
+    var_ringSeason_x = var_ringSeason_x,
+    var_ring = var_ring,
+    var_season = var_season,
+    var_resid = var_resid,
+    sd_slope = sd_slope,
+    rpt_within = rpt_within,
+    rpt_across = rpt_across
+  )
+  
+  return(result)
+}
 
 
 

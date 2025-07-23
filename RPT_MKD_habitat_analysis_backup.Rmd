@@ -1221,7 +1221,7 @@ rnd_effs_used.out <- do.call("rbind", ranef.list)
 
 save(var.df_all, file = "Data_outputs/waal_birdis_habitat_used_variances.RData")
 save(rnd_effs_used.out, file = "Data_outputs/waal_birdis_habitat_used_ranef.RData")
-
+save(rpt_df, file = "Data_outputs/waal_birdis_habitat_used_rpt.RData")
 
 ```
 
@@ -1231,7 +1231,7 @@ save(rnd_effs_used.out, file = "Data_outputs/waal_birdis_habitat_used_ranef.RDat
 
 load("Data_outputs/waal_birdis_habitat_used_ranef.RData")
 
-ranefs.df %<>%
+rnd_effs_used.out %<>%
  mutate(env = case_when(
   env == "bathy" ~ "Bathymetry (m below sea level)",
   env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
@@ -1243,13 +1243,13 @@ env_colours <- c(
   "SST (°C)" = sst_col)
 
 
-split_df <- ranefs.df %>% group_by(env) %>% group_split()
+split_df <- rnd_effs_used.out %>% group_by(env) %>% group_split()
 
 make_plot <- function(df) {
   df <- df %>%
-    mutate(ring_ordered = forcats::fct_reorder(ring, estimate))
+    mutate(ring_ordered = forcats::fct_reorder(ring, intercept))
 
-  ggplot(df, aes(x = estimate, y = ring_ordered, col = env)) +
+  ggplot(df, aes(x = intercept, y = ring_ordered, col = env)) +
     geom_point() +
     geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
     scale_color_manual(values = env_colours, guide = "none") +
@@ -1724,6 +1724,8 @@ for (i in 1:length(env_vars)) {
   rpt_across <- var_across / var_total 
   
   # Outputs
+  rpt_df <- rbind(rpt_df, data.frame(variable = env_vars[i], rpt_within = rpt_within, rpt_across = rpt_across))
+  
   var_df <- var_components %>%
      select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
      mutate(across(where(is.numeric), ~ round(.x, 3)),
@@ -1743,6 +1745,7 @@ rnd_effs_used.out <- do.call("rbind", ranef.list)
 
 save(var.df_all, file = "Data_outputs/waal_cro_habitat_used_variances.RData")
 save(rnd_effs_used.out, file = "Data_outputs/waal_cro_habitat_used_ranef.RData")
+save(rpt_df, file = "Data_outputs/waal_cro_habitat_used_rpt.RData")
 
 ```
 
@@ -2422,6 +2425,8 @@ for (i in 1:length(env_vars)) {
   rpt_across <- var_across / var_total 
   
   # Outputs
+  rpt_df <- rbind(rpt_df, data.frame(variable = env_vars[i], rpt_within = rpt_within, rpt_across = rpt_across))
+  
   var_df <- var_components %>%
      select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
      mutate(across(where(is.numeric), ~ round(.x, 3)),
@@ -2441,6 +2446,7 @@ rnd_effs_used.out <- do.call("rbind", ranef.list)
 
 save(var.df_all, file = "Data_outputs/bbal_birdis_habitat_used_variances.RData")
 save(rnd_effs_used.out, file = "Data_outputs/bbal_birdis_habitat_used_ranef.RData")
+save(rpt_df, file = "Data_outputs/bbal_birdis_habitat_used_rpt.RData")
 
 ```
 
@@ -3021,7 +3027,7 @@ ranef.list <- list()
 for (i in 1:length(env_vars)) {
   
   # Fit the linear mixed model
-  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID)")), data = pnts.used)
+  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1 | ID) + (1|tripID) + (1| season)")), data = pnts.used)
   
   ## Extract random intercepts
   ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
@@ -3045,6 +3051,8 @@ for (i in 1:length(env_vars)) {
   rpt_across <- var_across / var_total 
   
   # Outputs
+  rpt_df <- rbind(rpt_df, data.frame(variable = env_vars[i], rpt_across = rpt_across))
+  
   var_df <- var_components %>%
      select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
      mutate(across(where(is.numeric), ~ round(.x, 3)),
@@ -3063,6 +3071,7 @@ rnd_effs_used.out <- do.call("rbind", ranef.list)
 
 save(var.df_all, file = "Data_outputs/bbal_ker_habitat_used_variances.RData")
 save(rnd_effs_used.out, file = "Data_outputs/bbal_ker_habitat_used_ranef.RData")
+save(rpt_df, file = "Data_outputs/bbal_birdis_habitat_used_rpt.RData")
 
 ```
 
@@ -3072,7 +3081,7 @@ save(rnd_effs_used.out, file = "Data_outputs/bbal_ker_habitat_used_ranef.RData")
 
 load("Data_outputs/bbal_ker_habitat_used_ranef.RData")
 
-ranefs.df %<>%
+rnd_effs_used.out %<>%
  mutate(env = case_when(
   env == "bathy" ~ "Bathymetry (m below sea level)",
   env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
@@ -3084,13 +3093,13 @@ env_colours <- c(
   "SST (°C)" = sst_col)
 
 
-split_df <- ranefs.df %>% group_by(env) %>% group_split()
+split_df <- rnd_effs_used.out %>% group_by(env) %>% group_split()
 
 make_plot <- function(df) {
   df <- df %>%
-    mutate(ring_ordered = forcats::fct_reorder(ID, estimate))
+    mutate(ring_ordered = forcats::fct_reorder(ID, intercept))
 
-  ggplot(df, aes(x = estimate, y = ring_ordered, col = env)) +
+  ggplot(df, aes(x = intercept, y = ring_ordered, col = env)) +
     geom_point() +
     geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
     scale_color_manual(values = env_colours, guide = "none") +
@@ -3408,7 +3417,7 @@ save(condR_results, file = "Data_outputs/bbal_ker_condR_results.RData")
 
 ## Make the plot
 
-bathy_labels <- c("Off shelf", "Near shelf break", "On shelf")
+bathy_labels <- c("On shelf", "Near shelf break", "Off shelf")
 
 condR_plot <- ggplot() +
     geom_point(data = R_cond.df, aes(x= env, y = med_rpt), col = "#FFC107", size = 3) +
@@ -3525,14 +3534,14 @@ pred_plot <- ggplot(pred_df, aes(x = dist_shelf_bin, y = prob, group = ID)) +
 
 assign("bathy_pred_plot", pred_plot)
 
-save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
+save(rnd_effs_selection.out, file = "Data_outputs/bbal_ker_habitat_selection.RData")
 
 
 
 
 
 # Make the plot ----
-png("Figures/bbal_ker_habitat_conditional_repeatability2.png", width = 14, height = 9, units = "in", res = 600)
+png("Figures/bbal_ker_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + ylim(0, 1) + labs(x = "Proximity to shelf"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
           chl_pred_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
