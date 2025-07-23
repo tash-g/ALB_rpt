@@ -190,7 +190,7 @@ save(my_gps, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_label
 load("Data_inputs/breeding_dates.RData")
 load("Data_inputs/ind_meta.RData")
 
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_birdis")#, "waal_crozet")
+spec_col <- c("bbal_ker", "bbal_birdis", "waal_birdis", "waal_cro")
 ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
 bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
 cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
@@ -207,7 +207,9 @@ for (i in 1:length(spec_col)) {
   
   my_species = strsplit(spec_col, "_")[[i]][1]
   my_colony = strsplit(spec_col, "_")[[i]][2]
-  my_colony = ifelse(my_colony == "birdis", "birdisland", my_colony)
+  my_colony = ifelse(my_colony == "birdis", "birdisland", 
+                     ifelse(my_colony == "ker", "kerguelen",
+                            ifelse(my_colony == "cro", "crozet", my_colony)))
   
   ## Match in breeding phase
   my_breeding <- breed_dates %>% filter(species == my_species, colony == my_colony) %>%
@@ -216,7 +218,7 @@ for (i in 1:length(spec_col)) {
   
   ### Set hatch dates for when unknown
   if (my_colony == "birdis" & my_species == "waal") {
-    median_hatch <- "03-10" } else if (my_colony == "birdis" & my_species == "bba") { 
+    median_hatch <- "03-10" } else if (my_colony == "birdis" & my_species == "bbal") { 
       median_hatch <- "01-05" } else if (my_colony == "crozet") {
         median_hatch <- "03-22" } else if (my_colony == "kerguelen") {
           median_hatch <- "12-15" }
@@ -231,7 +233,9 @@ for (i in 1:length(spec_col)) {
                      year = year(datetime))
 
   ## Match in sex
-  my_ind <- all_ind.meta %>% mutate(species = tolower(species)) %>% filter(species == my_species) %>%
+  my_ind <- all_ind.meta %>% mutate(species = tolower(species),
+                                    species = ifelse(species == "bba", "bbal", "waal")) %>% 
+    filter(species == my_species) %>%
     select(ring, sex) %>% distinct()
   
   ### Remove sex if have > 2
@@ -239,26 +243,14 @@ for (i in 1:length(spec_col)) {
   my_gps <- merge(my_gps, my_ind, by = "ring", all.x = T)
   
   ## Get colony coords
-  if (grepl("kerguelen", spec_col[i])) {
+  if (grepl("ker", spec_col[i])) {
     col_coords <- ker_coords
   } else if (grepl("birdis", spec_col[i])) {
     col_coords <- bi_coords
-  } else if (grepl("crozet", spec_col[i])) {
+  } else if (grepl("cro", spec_col[i])) {
     col_coords <- cro_coords }
   
-  ## Calculate MCP per phase * sex ----------------
-  
-  # Make group ID to account for breeding phase (separate MCP per phase)
-  my_gps %<>% mutate(group_id = paste(phase, sex, sep = "_"))
-  
-  mcp.df <- my_gps %>% filter(!is.na(sex)) %>% select(longitude, latitude, group_id) %>% 
-    rename(x = longitude, y = latitude, ID = group_id) 
-  coordinates(mcp.df) <- mcp.df[, c('x', 'y')]
-  
-  mcp.est <- mcp(mcp.df[, 3], percent = 100)
-  
-  ## Split the MCPs by group
-  mcp.list <- split(mcp.est, mcp.est$id)
+  ## Calculate UD per phase * sex ----------------
   
   ## Set CRS
   if (my_colony == "kerguelen") {
@@ -267,6 +259,25 @@ for (i in 1:length(spec_col)) {
     my_crs = 32724 # UTM Zone 24S
   } else if (my_colony == "crozet") {
     my_crs = 32740 } # UTM Zone 40S
+  
+  # Make group ID to account for breeding phase (separate UD per phase)
+  my_gps %<>% mutate(group_id = paste(phase, sex, sep = "_"))
+  
+  ud.df <- my_gps %>% filter(!is.na(sex)) %>% select(longitude, latitude, group_id) %>% 
+    rename(x = longitude, y = latitude, ID = group_id) 
+  coordinates(ud.df) <- ud.df[, c('x', 'y')]
+  
+  # proj4string(ud.df) <- CRS(SRS_string = paste0("EPSG:", my_crs))
+  # ud.sf <- st_as_sf(ud.df, coords = c("x", "y"), crs = my_crs)
+  # ud.df <- as(ud.sf, "Spatial")
+  
+  ## Split the UDs by group
+  if(grepl("cro", spec_col[i])) {
+    ud.est <- kernelUD(ud.df[, 3], h = "href", extent = 3, grid = 500)
+  } else {  ud.est <- kernelUD(ud.df[, 3], h = "href") }
+  
+  ud.95 <- getverticeshr(ud.est, percent = 95)
+  ud.list <- split(ud.95, ud.95$id)
   
   ## Make a land mask
   land <- ne_countries(scale = "medium", returnclass = "sf") %>% st_transform(my_crs)
@@ -286,45 +297,45 @@ for (i in 1:length(spec_col)) {
     
     gps_ind <- my_gps %>% filter(ID == ind_trips[ind]) %>% mutate(date_hourly = round(datetime, units = "hours"))
    
-    # Get relevant MCP
+    # Get relevant UD
     grp_id <- unique(gps_ind$group_id)
     if(length(grp_id) > 1) { grp_id <- grep("incubation", grp_id, value = TRUE) }
     
     if (grp_id == "incubation_NA") {
-      # Combine male and female MCPs
-      mcp.grp <- st_union(
-        st_geometry(st_as_sf(mcp.list[["incubation_M"]])),
-        st_geometry(st_as_sf(mcp.list[["incubation_F"]])) ) %>%
+      # Combine male and female UDs
+      ud.grp <- st_union(
+        st_geometry(st_as_sf(ud.list[["incubation_M"]])),
+        st_geometry(st_as_sf(ud.list[["incubation_F"]])) ) %>%
         st_sf(geometry = .) %>%
         st_set_crs(4326) %>%
         st_transform(my_crs)
     } else if (grp_id == "brooding_NA") {
-      # Combine male and female MCPs
-      mcp.grp <- st_union(
-        st_geometry(st_as_sf(mcp.list[["brooding_M"]])),
-        st_geometry(st_as_sf(mcp.list[["brooding_F"]])) ) %>%
+      # Combine male and female UDs
+      ud.grp <- st_union(
+        st_geometry(st_as_sf(ud.list[["brooding_M"]])),
+        st_geometry(st_as_sf(ud.list[["brooding_F"]])) ) %>%
         st_sf(geometry = .) %>%
         st_set_crs(4326) %>%
         st_transform(my_crs)
     } else {
-      # Standard single MCP
-      mcp.grp <- st_as_sf(mcp.list[[grp_id]]) %>%
+      # Standard single UD
+      ud.grp <- st_as_sf(ud.list[[grp_id]]) %>%
         st_set_crs(4326) %>%
         st_transform(my_crs)
     }
     
-    mcp.grp <- st_transform(mcp.grp, crs = my_crs)
+    ud.grp <- st_transform(ud.grp, crs = my_crs)
     
     # Buffer and remove land
-    mcp.buffer <- st_buffer(mcp.grp, dist = 15000)
-    mcp.buffer_noLand <- st_difference(mcp.buffer, st_union(land_buffered)) %>%
+    ud.buffer <- st_buffer(ud.grp, dist = 15000)
+    ud.buffer_noLand <- st_difference(ud.buffer, st_union(land_buffered)) %>%
       st_union() %>%
       st_make_valid()
     
     # Sample n.pnts random points
     sampled_pnts <- gps_ind %>% 
       group_by(date_hourly) %>% 
-      summarise(random_pnts = list(st_sample(mcp.buffer_noLand, n() * n.pnts)), .groups = "drop",
+      summarise(random_pnts = list(st_sample(ud.buffer_noLand, n() * n.pnts)), .groups = "drop",
                 tripID = boutID[1]) %>%
       unnest(random_pnts) %>%
       mutate(row_id = row_number())

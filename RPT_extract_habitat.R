@@ -16,7 +16,7 @@
 # Load functions, packages, & data ---------------------------------------------
 
 # Functions for GPS processing and plotting
-source("RPT_functions.R")
+#source("RPT_functions.R")
 
 # Define the packages
 packages <- c("dplyr", "magrittr", "ggplot2","gridExtra", "tidyr",
@@ -46,7 +46,7 @@ select <- dplyr::select
 
 # Run the extraction as a big loop
 
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_birdis", "waal_crozet")
+spec_col <- c("bbal_ker", "bbal_birdis", "waal_birdis", "waal_cro")
 ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
 bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
 cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
@@ -139,7 +139,7 @@ for (n in 1:length(spec_col)) {
   bathy.df <- expand.grid(longitude = lon, latitude = lat)
   bathy.df$depth <- depth
   
-  save(bathy.df, file = paste0("Data_outputs/", spec_col[n], "bathymetry_data.RData"))
+  save(bathy.df, file = paste0("Data_outputs/", spec_col[n], "_bathymetry_data.RData"))
   
   ## Create a raster from bathymetry matrix
   bathy.raster <- rasterFromXYZ(bathy.df, crs = CRS("+proj=longlat +datum=WGS84"))
@@ -176,10 +176,10 @@ for (n in 1:length(spec_col)) {
   years <- years[years > 1992 & years < 2024]
   pnts_list <- vector(mode = "list", length = length(years))
   
-  spec_col.short <- case_when(spec_col[n] == "bba_kerguelen" ~ "bba_ker",
-                              spec_col[n] == "bba_birdis" ~ "bba_bi",
+  spec_col.short <- case_when(spec_col[n] == "bbal_ker" ~ "bba_ker",
+                              spec_col[n] == "bbal_birdis" ~ "bba_bi",
                               spec_col[n] == "waal_birdis" ~ "waal_bi",
-                              spec_col[n] == "waal_crozet" ~ "waal_cro")
+                              spec_col[n] == "waal_cro" ~ "waal_cro")
   
   for (i in 1:length(years)) {
     
@@ -252,7 +252,9 @@ for (n in 1:length(spec_col)) {
 
 # DOWNLOAD ---------------------------------------------------------------------
 
-## * SST -----------------------------------------------------------------------
+spec_col <- "bba_birdis"  # "bba_birdis" "bbal_ker" "waal_birdis", "waal_cro"
+
+load(paste0("Data_outputs/", spec_col, "_available_pnts_population_level.RData"))
 
 # Set parameters
 years = unique(year(pnts_all$datetime))
@@ -262,6 +264,8 @@ S = min(pnts_all$Latitude, na.rm = T)
 N = max(pnts_all$Latitude, na.rm = T)
 W = min(pnts_all$Longitude, na.rm = T)
 E = max(pnts_all$Longitude, na.rm = T)
+
+## * SST -----------------------------------------------------------------------
 
 # Set UID and API key
 cds.key <- "c446649a-11d0-47a2-8265-858bac139054"
@@ -353,133 +357,164 @@ for (i in 1:length(seasons)) {
 # ______________________________ ####
 # VISUALISE --------------------------------------------------------------------
 
+spec_col <- "waal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
+spec_col2 <- "waal_birdis"  # "bba_birdis" "bba_kerguelen" "waal_birdis", "waal_cro"
+
+load(paste0("Data_inputs/", spec_col, "_sst-bathy-chla_data_population_level.RData"))
+pnts_all %<>% filter(used == 1)
+
+# Set parameters
+years = unique(pnts_all$year)
+
+S = min(pnts_all$latitude, na.rm = T)
+N = max(pnts_all$latitude, na.rm = T)
+W = min(pnts_all$longitude, na.rm = T)
+E = max(pnts_all$longitude, na.rm = T)
+
 ## * SST -----------------------------------------------------------------------
 
-grib_data <- rast(paste0("D:/Environmental data/", my_species, "_", colony, "_sst.grib"))
+my_extent <- ext(W, E, S, N)
+grib_data <- rast(paste0("D:/Environmental data/", spec_col2, "_sst.grib"))
+grib_crop <- crop(grib_data, my_extent)
+
+time_info <- time(grib_crop)
+years_sst <- format(as.Date(time_info), "%Y")
+
+annual_sst <- tapp(grib_crop, index = years_sst, fun = mean, na.rm = TRUE, cores = 4)
+
+for (i in 1:nlyr(annual_sst)) {
+  
+  # Get SST data
+  r <- annual_sst[[i]] - 273.15
+  sst_df <- as.data.frame(r, xy = TRUE)
+  colnames(sst_df) <- c("Longitude", "Latitude", "SST")
+  
+  year_label <- gsub("X", "", names(annual_sst)[i])
+  
+  # Get GPS data
+  gps_df <- pnts_all %>% filter(year == as.numeric(year_label))
+  
+  # Make plot
+  plot_sst <- ggplot() +
+    geom_tile(data = sst_df, aes(x = Longitude, y = Latitude, fill = SST)) +
+    geom_path(data = gps_df, aes(x = longitude, y = latitude, group = ring), 
+              col = "white", alpha = 0.5) +
+    scale_fill_viridis_c(name = "SST (°C)") +
+    labs(title = paste("Annual SST", year_label)) +
+    coord_fixed() +
+    theme_bw()
+  
+  
+  png(filename = paste0("Figures/Environment/sst_", spec_col, "_", gsub("X", "", names(annual_sst)[i]), ".png"),
+      width = 8, height = 6, units = "in", res = 300)
+  print(plot_sst)
+  dev.off()
+
+}
+
+## Crozet only 
+
+grib_data <- rast("D:/Environmental data/waal_crozet_sst.grib")
 
 time_info <- time(grib_data)
-years <- format(as.Date(time_info), "%Y")
-months <- format(as.Date(time_info), "%m")
-
-# Aggregate data by year 
-annual_sst <- tapp(grib_data, index = years, fun = mean, na.rm = TRUE)
-
-## Convert raster to data frame for ggplot
-annual_sst.df <- as.data.frame(annual_sst, xy = TRUE)
-colnames(annual_sst.df) <- c("Longitude", "Latitude", paste0("Year_", unique(years)))
-
-## Reshape data for ggplot (annual_sst.df format)
-annual_sst.long <- annual_sst.df %>%
-  pivot_longer(cols = starts_with("Year_"), names_to = "year", values_to = "SST") %>%
-  mutate(year = sub("Year_", "", year),
-         SST = SST - 273.15)
-
-## Make the plot
-ggplot(data = annual_sst.long, aes(x = Longitude, y = Latitude, fill = SST)) +
-  geom_tile() +
-  facet_wrap(~year) +
-  scale_fill_viridis_c(name = "SST °C") +
-  labs(title = "Annual Mean Sea Surface Temperature") +
-  theme_bw() +
-  theme(legend.justification = "top")
+years_sst <- format(as.Date(time_info), "%Y")
 
 
-# Aggregate data by month (mean for each month)
-monthly_sst <- tapp(grib_data, index = months, fun = mean, na.rm = TRUE)
-
-## Convert raster to data frame for ggplot
-monthly_sst.df <- as.data.frame(monthly_sst, xy = TRUE)
-colnames(monthly_sst.df) <- c("Longitude", "Latitude", paste0("Month_", unique(months)))
-
-## Reshape data for ggplot (long format)
-monthly_sst.long <- monthly_sst.df %>%
-  pivot_longer(cols = starts_with("Month_"), names_to = "month", values_to = "SST") %>%
-  mutate(month = sub("Month_", "", month),
-         SST = SST - 273.15)
-
-## Reorder months
-monthly_sst.long$month <- factor(monthly_sst.long$month, levels = c("12", "01"))
-
-## Make the plot
-ggplot(data = monthly_sst.long, aes(x = Longitude, y = Latitude, fill = SST)) +
-  geom_tile() +
-  facet_wrap(~month, labeller = as_labeller(c("01" = "January", "12" = "December"))) +
-  scale_fill_viridis_c(name = "SST °C") +
-  labs(title = "Monthly Mean Sea Surface Temperature") +
-  theme_bw() +
-  theme(legend.justification = "top")
-
+for (i in 15:length(unique(years_sst))) {
+  
+  # Pick a year to process
+  year_target <- unique(years_sst)[i]
+  year_idx <- which(years_sst == year_target)
+  
+  # Subset layers for just that year
+  sst_year <- grib_data[[year_idx]]
+  
+  # Crop to extent
+  my_extent <- ext(W, E, S, N)  
+  sst_year_crop <- crop(sst_year, my_extent)
+  
+  # Average across time
+  sst_annual <- app(sst_year_crop, fun = mean, na.rm = TRUE, cores = 4)
+  
+  # Get SST data
+  sst_df <- as.data.frame(sst_annual - 273.15, xy = TRUE)
+  colnames(sst_df) <- c("Longitude", "Latitude", "SST")
+  
+  year_label <- year_target
+  
+  # Get GPS data
+  gps_df <- pnts_all %>% filter(year == as.numeric(year_target))
+  
+  # Make plot
+  plot_sst <- ggplot() +
+    geom_tile(data = sst_df, aes(x = Longitude, y = Latitude, fill = SST)) +
+    geom_path(data = gps_df, aes(x = longitude, y = latitude, group = ring), 
+              col = "white", alpha = 0.5) +
+    scale_fill_viridis_c(name = "SST (°C)") +
+    labs(title = paste("Annual SST", year_label)) +
+    coord_fixed() +
+    theme_bw()
+  
+  png(filename = paste0("Figures/Environment/sst_waal_cro_", year_target, ".png"),
+      width = 8, height = 6, units = "in", res = 300)
+  print(plot_sst)
+  dev.off()
+  
+}
 
 
 ## * BATHYMETRY ----------------------------------------------------------------
 
+load(paste0("Data_outputs/", spec_col2, "_bathymetry_data.RData"))
+
 world <- ne_countries(scale = "medium", returnclass = "sf")
 
+png(filename = paste0("Figures/Environment/bathymetry_", spec_col, ".png"),
+    width = 8, height = 6, units = "in", res = 300)
 ggplot() +
   geom_tile(data = bathy.df, aes(x = longitude, y = latitude, fill = depth)) +
   geom_sf(data = world, fill = "white", color = "white") +
-  geom_path(data = pnts_all %>% filter(used == 1),
-             aes(x = longitude, y = latitude, group = tripID), colour = "forestgreen", alpha = 0.5) +
+  geom_path(data = pnts_all, aes(x = longitude, y = latitude, group = ring), 
+            colour = "limegreen", alpha = 0.5) +
   scale_fill_viridis_c(option = "C", name = "Depth (m)") +
   coord_sf(xlim = c(W+0.5, E-1), ylim = c(S+1, N-1)) +
   theme_bw() +
   theme(legend.justification = "top")
+dev.off()
+
 
 ## * CHLOROPHYLL ---------------------------------------------------------------
 
-for (i in 1:length(seasons)) {
+chl_spec_col <- "waal_bi" # "bba_bi" "bba_ker" "waal_bi" "waal_cro"
+
+for (i in 1:length(years)) {
   
   # Load the file
-  nc_data <- rast(paste0("Data_env/", my_species, "_", colony, "_chlorophyll_", seasons[i], ".nc"))
+  nc_data <- rast(paste0("Data_env/", chl_spec_col, "_chlorophyll_", years[i], ".nc"))
   
-  time_info <- time(nc_data)
-  years <- format(as.Date(time_info), "%Y")
-  months <- format(as.Date(time_info), "%m")
+  chl_mean <- app(nc_data, fun = mean, na.rm = TRUE) 
   
-  # Aggregate data by year 
-  annual_chlA <- tapp(nc_data, index = years, fun = mean, na.rm = TRUE)
+  chl_df <- as.data.frame(chl_mean, xy = TRUE)
+  colnames(chl_df) <- c("Longitude", "Latitude", "ChlA")
   
-  ## Convert raster to data frame for ggplot
-  annual_chlA.df <- as.data.frame(annual_chlA, xy = TRUE)
-  colnames(annual_chlA.df) <- c("Longitude", "Latitude", paste0("Year_", unique(years)))
-  
-  ## Reshape data for ggplot (annual_sst.df format)
-  annual_chlA.long <- annual_chlA.df %>%
-    pivot_longer(cols = starts_with("Year_"), names_to = "year", values_to = "ChlA") %>%
-    mutate(year = sub("Year_", "", year))
+  # Get GPS data
+  gps_df <- pnts_all %>% filter(used == 1 & year == as.numeric(years[i]))
   
   ## Make the plot
-  ggplot(data = annual_chlA.long, aes(x = Longitude, y = Latitude, fill = ChlA)) +
-    geom_tile() +
-    facet_wrap(~year) +
-    scale_fill_viridis_c(name = "Chl-A") +
-    labs(title = "Annual Mean Chlorophyll") +
-    theme_bw() +
-    theme(legend.justification = "top")
+  chl_plot <- ggplot() +
+    geom_tile(data = chl_df, aes(x = Longitude, y = Latitude, fill = ChlA)) +
+    geom_path(data = gps_df, aes(x = longitude, y = latitude, group = ring), 
+              colour = "mediumvioletred", alpha = 0.5) +
+    scale_fill_gradient(name = "Chl-A", low = "white", high = "darkgreen",
+                        na.value = "grey20") +
+    labs(title = paste("Annual Mean Chlorophyll", years[i])) +
+    coord_fixed() +
+    theme_bw()
   
-  # Aggregate data by month (mean for each month)
-  monthly_chlA <- app(nc_data, index = months, fun = mean, na.rm = TRUE)
-  
-  ## Convert raster to data frame for ggplot
-  monthly_chlA.df <- as.data.frame(monthly_chlA, xy = TRUE)
-  colnames(monthly_chlA.df) <- c("Longitude", "Latitude", paste0("Month_", unique(months)))
-  
-  ## Reshape data for ggplot (long format)
-  monthly_chlA.long <- monthly_chlA.df %>%
-    pivot_longer(cols = starts_with("Month_"), names_to = "month", values_to = "ChlA") %>%
-    mutate(month = sub("Month_", "", month))
-  
-  ## Reorder months
-  monthly_chlA.long$month <- factor(monthly_chlA.long$month, levels = c("12", "01"))
-  
-  ## Make the plot
-  ggplot(data = monthly_chlA.long, aes(x = Longitude, y = Latitude, fill = ChlA)) +
-    geom_tile() +
-    facet_wrap(~month, labeller = as_labeller(c("01" = "January", "12" = "December"))) +
-    scale_fill_viridis_c(name = "Chl-A") +
-    labs(title = "Monthly Mean Chlorophyll") +
-    theme_bw() +
-    theme(legend.justification = "top")
+  png(filename = paste0("Figures/Environment/chlorophyll_", spec_col, "_", years[i], ".png"),
+      width = 8, height = 6, units = "in", res = 300)
+  print(chl_plot)
+  dev.off()
   
 }
 
