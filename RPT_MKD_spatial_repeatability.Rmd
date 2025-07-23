@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ecmwfr", "ggridges", "rnaturalearth", "purrr", "geosphere", "lmerTest", "sp", "kableExtra", "emmeans", "data.table", "dtw") 
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ecmwfr", "ggridges", "rnaturalearth", "purrr", "geosphere", "lmerTest", "sp", "kableExtra", "emmeans", "data.table", "dtw", "adehabitatHR") 
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -706,10 +706,10 @@ There is a good write-up on DTW in [Cleasby et al. 2019, Behav Ecol Socio](https
 
 For this analysis, I used the same modelling approach as for the trip trajectories analysis, but using DTW as my response. As with the trip trajectories comparison, there are a very high number of possible comparisons, so I downsampled the between-individual datasets to 3x the size of the within-individual datasets.
 
-```{r prep_dtw_data, eval = FALSE}
+```{r prep_ba_data, eval = FALSE}
 
 # Set parameters
-spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
 for (i in 1:length(spec_col)) {
@@ -724,7 +724,7 @@ for (i in 1:length(spec_col)) {
   
   species <- strsplit(spec_col[i], "_")[[1]][1]
   colony <- strsplit(spec_col[i], "_")[[1]][2]
-  
+ 
   ## Correct issues with breeding phase
   trips_to_fix <- my_gps %>%
     group_by(tripID) %>%
@@ -745,10 +745,10 @@ for (i in 1:length(spec_col)) {
   trip_combinations.df <- data.frame(do.call("rbind", trip_combinations))
   colnames(trip_combinations.df) <- c("tripID_1", "tripID_2")
 
-  # Within-individual DTW -----
+  # Within-individual ba -----
   
   # Find the combinations by filtering to same rings and same phase
-  dtw_within.df <- trip_combinations.df %>%
+  ba_within.df <- trip_combinations.df %>%
      mutate(ring_1 = sub("_.*", "", tripID_1),
            ring_2 = sub("_.*", "", tripID_2)) %>%
     filter(ring_1 == ring_2) %>%
@@ -766,36 +766,76 @@ for (i in 1:length(spec_col)) {
     filter(phase_comp == "same_phase") %>%
     select(-c(phase_comp, phase_1, phase_2))
 
-  ## Calculate the comparisons (slow!)
-  dtw_within.list <- vector(mode = "list", length = nrow(dtw_within.df))
-  pb <- txtProgressBar(min = 0, max = nrow(dtw_within.df), style = 3)
+  nrow_within <- nrow(ba_within.df)
   
-  for (j in 1:nrow(dtw_within.df)) {
+  ## Calculate the comparisons (slow!)
+  ba_within.list <- vector(mode = "list", length = nrow(ba_within.df))
+  pb <- txtProgressBar(min = 0, max = nrow(ba_within.df), style = 3)
+  
+  for (j in 1:nrow(ba_within.df)) {
     
     setTxtProgressBar(pb, j)
     
-    trip1 <- convert_to_spdf(subset(my_gps, ID == dtw_within.df$tripID_1[j]), proj.dec)
-    trip2 <- convert_to_spdf(subset(my_gps, ID == dtw_within.df$tripID_2[j]), proj.dec)
+    # Subset data for both trips
+    trip1 <- subset(my_gps, ID == ba_within.df$tripID_1[j])
+    trip2 <- subset(my_gps, ID == ba_within.df$tripID_2[j])
     
-    trip1_mat <- as.matrix(trip1@coords)
-    trip2_mat <- as.matrix(trip2@coords)
-   
-    dtw_out <- dtw(trip1_mat, trip2_mat, dist.method = "Euclidean")$distance
+    # Combine trips and factorize ID
+    both_trips <- rbind(trip1, trip2) 
+    both_trips %<>% 
+      mutate(id = as.factor(both_trips$tripID)) %>%
+      select(c(longitude, latitude, id))
     
-    output <- data.frame(trip1 = dtw_within.df$tripID_1[j],
-                         trip2 = dtw_within.df$tripID_2[j],
-                         dtw = dtw_out)
+    # Convert to SpatialPointsDataFrame
+    coordinates(both_trips) <- ~longitude + latitude
+    proj4string(both_trips) <- CRS(proj.dec)
+    
+    # Get bounding box
+    bb <- bbox(both_trips)
+
+    ## Define a raster grid extent slightly larger than the bounding box
+    xrange <- bb[1, 2] - bb[1, 1]
+    yrange <- bb[2, 2] - bb[2, 1]
+    
+    ## Expand the bounding box slightly (e.g. 20% buffer)
+    bb_expanded <- bb
+    bb_expanded[1, ] <- bb[1, ] + c(-0.1 * xrange, 0.1 * xrange)
+    bb_expanded[2, ] <- bb[2, ] + c(-0.1 * yrange, 0.1 * yrange)
+    
+    # Get the UDs
+    ud <- kernelUD(both_trips, h = "href", grid = 100, extent = 0, kern = "bivnorm", same4all = TRUE)
+
+    # Calculate UD overlap — Bhattacharyya’s affinity
+    overlap_val <- kerneloverlaphr(ud, method = "BA", percent = 95)[1,2]
+
+    # Output
+    output <- data.frame(trip1 = ba_within.df$tripID_1[j],
+                         trip2 = ba_within.df$tripID_2[j],
+                         ba_val = overlap_val)
   
-    dtw_within.list[[j]] <- output 
+    
+    # trip1 <- convert_to_spdf(subset(my_gps, ID == ba_within.df$tripID_1[j]), proj.dec)
+    # trip2 <- convert_to_spdf(subset(my_gps, ID == ba_within.df$tripID_2[j]), proj.dec)
+    # 
+    # trip1_mat <- as.matrix(trip1@coords)
+    # trip2_mat <- as.matrix(trip2@coords)
+    # 
+    # ba_out <- ba(trip1_mat, trip2_mat, dist.method = "Euclidean")$distance
+    # 
+    # output <- data.frame(trip1 = ba_within.df$tripID_1[j],
+    #                      trip2 = ba_within.df$tripID_2[j],
+    #                      ba = ba_out)
+  
+    ba_within.list[[j]] <- output 
     
   }
   
   close(pb)
 
   ## Bind up the output
-  dtw_within.output <- do.call("rbind", dtw_within.list)
+  ba_within.output <- do.call("rbind", ba_within.list)
   
-  dtw_within.output %<>% 
+  ba_within.output %<>% 
     separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1"), sep = "_") %>%
     separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2"), sep = "_") %>%
     select(-loc) %>%
@@ -805,13 +845,13 @@ for (i in 1:length(spec_col)) {
            comp_season = ifelse(season_1 == season_2, "within_season", "between_season"))
 
 
-  nrow_within <- nrow(dtw_within.df)
-  rm(dtw_within.df); rm(dtw_within.list); rm(dtw_between.output)
+  nrow_within <- nrow(ba_within.df)
+  rm(ba_within.df); rm(ba_within.list)
   gc()
   
-  # Between-individual DTW -----
+  # Between-individual ba -----
   
-  dtw_between.df <- trip_combinations.df %>%
+  ba_between.df <- trip_combinations.df %>%
     mutate(ring_1 = sub("_.*", "", tripID_1),
            ring_2 = sub("_.*", "", tripID_2)) %>%
     filter(ring_1 != ring_2) %>%
@@ -835,38 +875,75 @@ for (i in 1:length(spec_col)) {
   set.seed(817)
   n_sub = 3 * nrow_within
 
-  dtw_between <- dtw_between.df %>% 
+  ba_between <- ba_between.df %>% 
     sample_n(size = n_sub, replace = FALSE)
   
   ## Calculate the comparisons
-  dtw_between.list <- vector(mode = "list", length = nrow(dtw_between))
-  pb <- txtProgressBar(min = 0, max = nrow(dtw_between), style = 3)
+  ba_between.list <- vector(mode = "list", length = nrow(ba_between))
+  pb <- txtProgressBar(min = 0, max = nrow(ba_between), style = 3)
   
-  for (k in 1:nrow(dtw_between)) {
+  for (k in 1:nrow(ba_between)) {
     
     setTxtProgressBar(pb, k)
     
-    trip1 <- convert_to_spdf(subset(my_gps, ID == dtw_between$tripID_1[k]), proj.dec)
-    trip2 <- convert_to_spdf(subset(my_gps, ID == dtw_between$tripID_2[k]), proj.dec)
+    # Subset data for both trips
+    trip1 <- subset(my_gps, ID == ba_between.df$tripID_1[k])
+    trip2 <- subset(my_gps, ID == ba_between.df$tripID_2[k])
     
-    trip1_mat <- as.matrix(trip1@coords)
-    trip2_mat <- as.matrix(trip2@coords)
+    # Combine trips and factorize ID
+    both_trips <- rbind(trip1, trip2) 
+    both_trips %<>% 
+      mutate(id = as.factor(both_trips$tripID)) %>%
+      select(c(longitude, latitude, id))
     
-    dtw_out <- dtw(trip1_mat, trip2_mat, dist.method = "Euclidean")$distance
+    # Convert to SpatialPointsDataFrame
+    coordinates(both_trips) <- ~longitude + latitude
+    proj4string(both_trips) <- CRS(proj.dec)
     
-    output <- data.frame(trip1 = dtw_between$tripID_1[k],
-                         trip2 = dtw_between$tripID_2[k],
-                         dtw = dtw_out)
+    # Get bounding box
+    bb <- bbox(both_trips)
+
+    ## Define a raster grid extent slightly larger than the bounding box
+    xrange <- bb[1, 2] - bb[1, 1]
+    yrange <- bb[2, 2] - bb[2, 1]
     
-    dtw_between.list[[k]] <- output 
+    ## Expand the bounding box slightly (e.g. 20% buffer)
+    bb_expanded <- bb
+    bb_expanded[1, ] <- bb[1, ] + c(-0.1 * xrange, 0.1 * xrange)
+    bb_expanded[2, ] <- bb[2, ] + c(-0.1 * yrange, 0.1 * yrange)
+    
+    # Get the UDs
+    ud <- kernelUD(both_trips, h = "href", grid = 100, extent = 0, kern = "bivnorm", same4all = TRUE)
+
+    # Calculate UD overlap — Bhattacharyya’s affinity
+    overlap_val <- kerneloverlaphr(ud, method = "BA", percent = 95)[1,2]
+
+    # Output
+    output <- data.frame(trip1 = ba_between.df$tripID_1[k],
+                         trip2 = ba_between.df$tripID_2[k],
+                         ba_val = overlap_val)
+  
+    # trip1 <- convert_to_spdf(subset(my_gps, ID == ba_between$tripID_1[k]), proj.dec)
+    # trip2 <- convert_to_spdf(subset(my_gps, ID == ba_between$tripID_2[k]), proj.dec)
+    # 
+    # trip1_mat <- as.matrix(trip1@coords)
+    # trip2_mat <- as.matrix(trip2@coords)
+    # 
+    # ba_out <- ba(trip1_mat, trip2_mat, dist.method = "Euclidean")$distance
+    # 
+    # output <- data.frame(trip1 = ba_between$tripID_1[k],
+    #                      trip2 = ba_between$tripID_2[k],
+    #                      ba = ba_out)
+    
+    ba_between.list[[k]] <- output 
     
   }
   
   close(pb)
 
-  dtw_between.output <- do.call("rbind", dtw_between.list)
+  ba_between.output <- do.call("rbind", ba_between.list)
   
-  dtw_between.output %<>% 
+  ba_between.output %<>% 
     separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1"), sep = "_") %>%
     separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2"), sep = "_") %>%
     select(-loc) %>%
@@ -876,11 +953,11 @@ for (i in 1:length(spec_col)) {
            comp_season = ifelse(season_1 == season_2, "within_season", "between_season"))
   
   # Bind the two dataframes together
-  dtw.df <- rbind(dtw_within.output, dtw_between.output)
+  ba.df <- rbind(ba_within.output, ba_between.output)
   
-  save(dtw.df, file = paste0("Data_outputs/", species, "_", colony, "_dtw_comparison.RData"))
+  save(ba.df, file = paste0("Data_outputs/", species, "_", colony, "_ba_comparison.RData"))
   
-  rm(dtw.df); rm(dtw_within.output); rm(dtw_between.df); rm(dtw_between.list)
+  rm(ba.df); rm(ba_within.output); rm(ba_between.df); rm(ba_between.list); rm(ba_between.output)
   gc()
 
 }
