@@ -22,8 +22,7 @@
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "readxl", "sf", "ggplot2", "data.table",
-              "momentuHMM")
+packages <- c("dplyr", "magrittr", "readxl", "sf", "ggplot2", "data.table", "tidyr")
 
 # Install packages not yet installed - change lib to library path
 #installed_packages <- packages %in% rownames(installed.packages())
@@ -40,12 +39,38 @@ options(dplyr.summarise.inform = FALSE)
 select <- dplyr::select
 
 
+# ______________________________ ####
+# SAMPLE SIZES --------------------------------------------------------
 
-# Get sample sizes --------------------------------------------------------
+### Overall samples ----
+
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+all_birds.list <- list()
+
+for (i in 1:length(spec_col)) {
+  
+  species <- strsplit(spec_col[i], "_")[[1]][1]
+  colony <- strsplit(spec_col[i], "_")[[1]][2]
+  
+  load(paste0("Data_inputs/", spec_col[i], "_gls_labelled_subset.RData"))
+  gls_summary <- gls_labelled.df %>% select(ring, season, phase) %>% distinct() %>% mutate(logger = "GLS")
+  
+  load(paste0("Data_inputs/", spec_col[i], "_gps_labelled_subset.RData"))
+  gps_summary <- gps_labelled.df %>% select(ring, season, phase) %>% distinct() %>% mutate(logger = "GPS")
+
+  all_birds <- rbind(gls_summary, gps_summary) %>% mutate(species = species, colony = colony)
+  all_birds.list[[i]] <- all_birds
+  
+}
+
+all_birds.df <- do.call("rbind", all_birds.list)
+
+all_birds.df %>% group_by(species, colony) %>% summarise(n_sample = n_distinct(ring))
+
+by_logger <- all_birds.df %>% select(ring, season, logger) %>% distinct() %>% group_by(ring, season) %>% mutate(logger = ifelse(n_distinct(logger) > 1, "both", logger))
+table(by_logger$logger)
 
 ### GLS ----------
-# Change directory to access GLS data
-setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_foraging_proj")
 
 spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
 sample_gls.list <- list()
@@ -129,8 +154,6 @@ runs_gls %>%
             n_birds = n_distinct(ring))
 
 ### GPS ---------
-
-setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
 
 sample_gps.list <- list()
 runs_gps.list <- list()
@@ -218,8 +241,6 @@ runs_gps %>%
 # CUT GLS DATA TO BREEDING ---------------------------------------------------------
 
 # Change directory to access GLS data
-setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_foraging_proj")
-
 spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
 
 for (i in 1:length(spec_col)) {
@@ -298,7 +319,7 @@ for (i in 1:length(spec_col)) {
   
   gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
   
-  save(gls_labelled.df, file = paste0("Data_outputs/", spec_col[i], "_gls_labelled_subset.RData"))
+  save(gls_labelled.df, file = paste0("Data_inputs/", spec_col[i], "_gls_labelled_subset.RData"))
 
 }
   
@@ -306,7 +327,7 @@ for (i in 1:length(spec_col)) {
 
 # PROCESS GPS DATA -------------------------------------------------------------
 
-load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gps_labelled_subset.RData"))
+load(paste0("Data_inputs/", spec_col, "_gps_labelled_subset.RData"))
 
 ## Calculate landings using speed filter ---------------------------------------
 
@@ -380,7 +401,7 @@ gps_full <- gps_labelled.df %>%
 
 # PROCESS GLS DATA WITH GPS DATA ===============================================
 
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_gls_labelled_subset.RData"))
+load(paste0("Data_inputs/", my_species, "_", colony_exp, "_gls_labelled_subset.RData"))
 
 all_birds <- unique(c(unique(gls_labelled.df$ringYr),
                       unique(gps_full$ringYr)))
@@ -527,15 +548,12 @@ trips_summary <- do.call("rbind", all_trips.list)
 trips_summary %<>% filter(duration.days <= 30 & rest_time.pct > 0 & rest_time.pct < 100)
 
 # Change directory back
-setwd("C:/Users/gilli/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
-#setwd("C:/Users/ngillies/OneDrive - The University of Liverpool/Liverpool postdoc/ALB_foraging/ALB_rpt")
-
 save(trips_summary, file = paste0("Data_inputs/", my_species, "_", colony_exp, "_individual_trips_summary.RData"))
 
 
 
 
-
+# ______________________________ ####
 ## APPENDIX --------------------------------------------------------------------
 
 ## Fit an HMM to the data
