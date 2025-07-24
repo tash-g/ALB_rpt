@@ -1,8 +1,4 @@
 
-# * CALCULATE REPEATABILITY (brms) * ------------------------------------------
-
-
-
 # * DATA PROCESSING * -----------------------------------------------------
 
 cut_to_breeding <- function(data, medLay, medHatch, hatchTime, broodTime) {
@@ -113,8 +109,6 @@ plot_binnedplot <- function(model) {
 
 # * MODEL OUTPUTS * -------------------------------------------------------
 
-
-
 extract_output.lmm <- function(model, ci_level = 0.95) {
   # Get the critical value for the specified CI level
   z <- qnorm(1 - (1 - ci_level) / 2)
@@ -166,6 +160,8 @@ extract_output.lm <- function(model, ci_level = 0.95) {
   return(fixed_effects_df)
 }
 
+logit_to_prob <- function(logit_val) {
+  1 / (1 + exp(-logit_val)) }
 
 # Helper function to extract emmeans
 # get_emmeans <- function(model, by, extra_info) {

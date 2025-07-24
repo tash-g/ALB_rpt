@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ecmwfr", "ggridges", "rnaturalearth", "purrr", "geosphere", "lmerTest", "sp", "kableExtra", "emmeans", "data.table", "dtw", "adehabitatHR") 
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ecmwfr", "ggridges", "rnaturalearth", "purrr", "geosphere", "sp", "kableExtra", "emmeans", "data.table", "adehabitatHR", "betareg") 
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -360,7 +360,7 @@ After calculating my trajectories, I then compute the **absolute differences bet
 ```{r prep_bearings_data, eval = FALSE}
 
 # Set parameters
-spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 
 # Set colony coordinates
 ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
@@ -400,6 +400,13 @@ for (i in 1:length(spec_col)) {
   
   my_gps %<>% mutate(phase = if_else(tripID %in% trips_to_fix & phase == "brooding", "incubation", phase))
 
+  # Remove colony periods & any very short trips
+  my_gps %<>% filter(loc == "trip")
+  my_gps %<>% group_by(tripID) %>% mutate(n_locs = n()) %>% filter(n_locs > 6) %>% select(-n_locs) %>% ungroup()
+  
+  ## Remove birds with only one trip
+  my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
+  
   # Calculate average bearing from colony ------------
    
   # Calculate average bearings
@@ -427,16 +434,22 @@ for (i in 1:length(spec_col)) {
   # Within-individual bearings #
   bearings_within <- calculate_bearing_diffs(trip_bearings, "bearing_col", "bearing_diff", comparison_type = "within")
   
-  # Among-individual differences #
+  # Between-individual differences #
   bearings_between <- calculate_bearing_diffs(trip_bearings, "bearing_col", "bearing_diff", comparison_type = "between")
   
+  ## Downsample the between dataset to match within 
+  n_within_between = nrow(bearings_within %>% filter(comp_season == "between_season"))
+  n_within_within = nrow(bearings_within %>% filter(comp_season == "within_season"))
+ 
+  bearings_between_between <- bearings_between %>% sample_n(size = n_within_between, replace = FALSE)
+  bearings_between_within <- bearings_between %>% sample_n(size = n_within_within, replace = FALSE)
+  
   # Combine results #
-  bearing_differences <- rbind(bearings_within, bearings_between)
+  bearing_differences <- rbind(bearings_within, bearings_between_between, bearings_between_within)
   save(bearing_differences, file = paste0("Data_outputs/", spec_col[i], "_bearing_differences.RData"))
 
 }
 
-  
 bearings.df <- do.call("rbind", trip_bearings.list)
 save(bearings.df, file = "Data_outputs/bearings_data.RData")
 
@@ -499,7 +512,7 @@ where:
 ```{r model_bearing_differences, eval = FALSE}
 
 # Species-colony combinations
-spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 
 # Output containers
 bearings_summary.list <- list()
@@ -510,7 +523,6 @@ for (i in seq_along(spec_col)) {
   
   # Load data and prep species/colony labels
   load(paste0("Data_outputs/", spec_col[i], "_bearing_differences.RData"))
-  bearing_differences %<>% rename(bearing_diff = bearing_col.diff)
   species <- strsplit(spec_col[i], "_")[[1]][1]
   colony <- strsplit(spec_col[i], "_")[[1]][2]
   meta_info <- tibble(species, colony)
@@ -538,15 +550,16 @@ for (i in seq_along(spec_col)) {
   bearing_differences$comp_ind <- relevel(bearing_differences$comp_ind, ref = "within_ring")
   bearing_differences$comp_season <- relevel(bearing_differences$comp_season, ref = "within_season")
 
-  ## Exclude within-individual, between season comparison for WAAL at Bird Island
-  if(spec_col[i] == "waal_birdis") { bearing_differences %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))}
-  
-  bearing_differences <- droplevels(bearing_differences)
-  
-  # Build the model
-  m1 <- lm(bearing_diff ~ comp_season * comp_ind, data = bearing_differences)
+  ## Remove within ind, within season component for WAAL Bird IS
+  if(i == 3) { 
+    bearing_differences %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))
+    bearing_differences <- droplevels(bearing_differences)
+    
+    m1 <- lm(bearing_diff ~ comp_ind + comp_season, data = bearing_differences) } else {
+        m1 <- lm(bearing_diff ~ comp_ind * comp_season, data = bearing_differences)
+    }
 
-  ## Diagnostics
+   ## Diagnostics
   # plot(m1, resid(., scaled=TRUE) ~ fitted(.), abline = 0)
   # qqnorm(resid(m1))
   # qqline(resid(m1))
@@ -586,83 +599,78 @@ bearings_summary <- bind_rows(bearings_summary.list)
 bearings_data    <- bind_rows(bearings_data.list)
 bearings_means   <- bind_rows(bearings_means.list)
 
-save(bearings_summary, file = "Data_outputs/trajectory_models_summary.RData")
-save(bearings_data, file = "Data_outputs/trajectory_data_combined.RData")
-save(bearings_means, file = "Data_outputs/trajectory_means.RData")
+save(bearings_summary, file = "Data_outputs/bearings_models_summary.RData")
+save(bearings_data, file = "Data_outputs/bearings_data_combined.RData")
+save(bearings_means, file = "Data_outputs/bearings_means.RData")
 
 
 ```
 
-```{r plot_trajectory_diffs, fig.dim=c(6,6)}
+```{r plot_bearings_diffs, fig.dim=c(6,6)}
 
-load("Data_outputs/trajectory_means.RData")
+load("Data_outputs/bearings_means.RData")
 bearings_means %<>% filter(!is.na(comp_season)) %>% filter(!is.na(comp_ind))
+
+## Drop within ind, between seasons for WAAL Bird Island
+bearings_means %<>% filter(!(species == "waal" & colony == "birdis" & comp_ind == "within_ring" & comp_season == "between_season"))
 
 # Data wrangling for figure
 bearings_plot <- bearings_means %>%
   mutate(species = case_when(
-          species == "bba" ~ "BBAL",
+          species == "bbal" ~ "BBAL",
           species == "waal" ~ "WAAL",
           TRUE ~ species),
     colony = case_when(
       colony == "birdis" ~ "Bird Island",
-      colony == "kerguelen" ~ "Kerguelen",
-      colony == "crozet" ~ "Crozet",
+      colony == "ker" ~ "Kerguelen",
+      colony == "cro" ~ "Crozet",
       TRUE ~ colony),
-    spec_col = paste(species, colony, sep = ", "),
-    comp = case_when(
-      comp_season == "within_season" & comp_ind == "within_ring" ~ "Within-individual, within season",
-      comp_season == "between_season" & comp_ind == "within_ring" ~ "Within-individual, across seasons",
-      comp_season == "within_season" & comp_ind == "between_ring" ~ "Among-individual, within seasons",
-      comp_season == "between_season" & comp_ind == "between_ring" ~ "Among-individual, across season",
-      TRUE ~ paste(comp_season, comp_ind, sep = ", "))
-  )
+    spec_col = paste(species, colony, sep = ", "))
 
-# Define the order of Comparison levels
-comparison_levels <- c(
-  "Within-individual, within season",
-  "Within-individual, across seasons",
-  "Among-individual, within seasons",
-  "Among-individual, across season"
-)
 
-bearings_plot$comp <- factor(bearings_plot$comp, levels = comparison_levels)
+# For interpretation, convert bearing difference to a bearing similarity measure (0 = dissimilar, 1 = the same) - promotes comparison with BA
+# bearings_plot %<>% 
+#   mutate(bearing_similarity = 1 - (emmean / 180),
+#          similarity_SE = SE / 180, 
+#          similarity_lower = bearing_similarity - 1.96 * similarity_SE,
+#          similarity_upper = bearing_similarity + 1.96 * similarity_SE)
 
-#png(filename = "Figures/MS Figures/FIGX_spatial_repeatability_bearings_comparison.png", width = 6, height = 6, units = "in", res = 900)
+png(filename = "Figures/MS Figures/FIGX_spatial_repeatability_bearings_comparison.png", width = 6, height = 6, units = "in", res = 900)
 ggplot(bearings_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
   geom_point() +
   geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
                 width = 0.1) +
   geom_line(aes(group = comp_season)) +
-  labs(x = "", colour = "", y = "Angular bearing differences, degrees") +
-  facet_wrap(~spec_col, scales = "free") +
+  labs(x = "", colour = "", y = "Difference in bearing") +
+  facet_wrap(~spec_col) +
   scale_colour_viridis_d(labels = c("Within season", "Across seasons")) +
   scale_x_discrete(labels = c("Within individual", "Among individual")) +
   theme_bw() +
-  theme(legend.position = c(0.35, 0.62),
+  theme(legend.position = c(0.13, 0.97),
         legend.background = element_rect(fill = "transparent", colour = NA),
         legend.key = element_rect(fill = "transparent", colour = NA))
-#dev.off()
+dev.off()
 
 
 ```
 
 ```{r bearing_differences_table}
 
-load("Data_outputs/trajectory_models_summary.RData")
+load("Data_outputs/bearings_models_summary.RData")
 
 # Reformat the table
 bearings_summary %<>%
  mutate(Species = toupper(species),
         Colony = ifelse(colony == "birdis", "Bird Island",
-                         ifelse(colony == "crozet", "Crozet",
+                         ifelse(colony == "cro", "Crozet",
                                 "Kerguelen")), 
         Term = case_when(
             Term == "(Intercept)"  ~ "Intercept",
             Term == "comp_seasonbetween_season" ~ "Across seasons",
             Term == "comp_indbetween_ring" ~ "Among individuals",
-            Term == "comp_seasonbetween_season:comp_indbetween_ring"~ "Among individuals * Across seasons"),
-         Estimate = paste0(signif(Estimate,4), " \u00B1 ", signif(Std_Error, 4)),
+            Term == "comp_indbetween_ring:comp_seasonbetween_season" ~ "Among individuals * Across seasons"),
+         Estimate = paste0(signif(Estimate,4), " \u00B1 ", signif(Std_Error, 2)),
+         t_value = signif(t_value, 4),
          p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 4), nsmall = 4, scientific = FALSE))) %>%
   rename('t value' = t_value, 'p value' = p_value) %>%
   select(-c(species, colony, Std_Error)) %>%
@@ -674,7 +682,7 @@ bearings_summary %<>%
          
 
 knitr::kable(bearings_summary, format = "html", 
-             caption = '<span style="font-size: 12px;">Table 2. Model outputs for trajectory comparisons. Models compared differences in bearings between the colony and the distal point of foraging trips.</span>', digits = 3) %>%
+             caption = '<span style="font-size: 12px;">Table 2. Model outputs for bearings comparisons. Models compared differences in bearings between the colony and the distal point of foraging trips.</span>', digits = 3) %>%
   row_spec(which(bearings_summary$`p value` < 0.05 & bearings_summary$Term != "Intercept"), bold = TRUE) %>%
   collapse_rows(columns = c(1, 2)) %>%
   kable_styling(font_size = 9)
@@ -694,19 +702,11 @@ knitr::kable(bearings_summary, format = "html",
 
 -   *WAAL at Crozet* : Birds differed significantly from one another and changing between years i.e. they were strongly consistent within seasons. The significant negative interaction indicates that individuals were more consistent in their bearing across seasons than would be expected based on the main effects alone.
 
-### DTW comparisons
+### BA comparisons
 
-*Quick note*: originally I tried the Earth mover's distance (EMD): this calculates the effort required to transform one image to another. In the context of GPS tracks, it quantifies the work needed to transpose one track to another. Therefore, a low EMD indicates high similarity between tracks, and a high EMD indicates low similarity. However, **this was extremely computationally intensive**, especially for long tracks.
+After experimenting with DTW values (see Appendix), I ultimately switched to using Bhattycharyya's Affinity. This is more commonly used, and I think better captures what I'm interested in - which is space use. DTW was likely to be too heavily influenced by instantaneous environmental conditions during trips. By comparing with the bearings, I can identify both whether individuals are 'targeting' similar places, and whether they spend time in the same places overall. 
 
-As a result, I switched to an alternative method called **dynamic time warping**. This is much faster, and also retains the sequential structure of the track so is probably better for movement data. There is even a clustering package available called 'dtwclust' if I need to speed things up more quickly.
-
-Briefly, DTW recursively compares all point combinations between two trajectories and identifies the smallest path between them. This does make it sensitive to noise, as it will also compare outliers, but this is the case for EMD too. The DTW value essentially measures the 'warping' needed to aling to two trajectories. As a result, a high DTW suggests low similarity, and a low DTW suggests high similarity.
-
-There is a good write-up on DTW in [Cleasby et al. 2019, Behav Ecol Socio](https://link.springer.com/article/10.1007/s00265-019-2761-1#Sec18) that shows it performing well in comparison to several measures of trajectory similarity.
-
-For this analysis, I used the same modelling approach as for the trip trajectories analysis, but using DTW as my response. As with the trip trajectories comparison, there are a very high number of possible comparisons, so I downsampled the between-individual datasets to 3x the size of the within-individual datasets.
-
-```{r prep_ba_data, eval = FALSE}
+```{r prep_BA_data, eval = FALSE}
 
 # Set parameters
 spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
@@ -718,13 +718,16 @@ for (i in 1:length(spec_col)) {
   my_file <- gps_files[grepl("labelled", gps_files)]
   
   my_gps <- loadRData(paste0("Data_inputs/", my_file)) 
-  
-  # Remove colony periods
-  my_gps %<>% filter(loc == "trip")
-  
   species <- strsplit(spec_col[i], "_")[[1]][1]
   colony <- strsplit(spec_col[i], "_")[[1]][2]
  
+  # Remove colony periods & any very short trips
+  my_gps %<>% filter(loc == "trip")
+  my_gps %<>% group_by(tripID) %>% mutate(n_locs = n()) %>% filter(n_locs > 6) %>% select(-n_locs) %>% ungroup()
+  
+  ## Remove birds with only one trip
+  my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
+  
   ## Correct issues with breeding phase
   trips_to_fix <- my_gps %>%
     group_by(tripID) %>%
@@ -734,10 +737,10 @@ for (i in 1:length(spec_col)) {
   
   my_gps %<>% mutate(phase = if_else(tripID %in% trips_to_fix & phase == "brooding", "incubation", phase))
   
-  ## Get meta for later
+  ### Meta for phase comparisons later
   my_meta <- my_gps %>%
     group_by(ID) %>%
-    select(c(ring, season, boutID, duration.mins, duration.hours, ID, phase)) %>%
+    select(c(ring, season, boutID, ID, phase)) %>%
     distinct()
 
   # Generate all possible trip combinations 
@@ -745,7 +748,43 @@ for (i in 1:length(spec_col)) {
   trip_combinations.df <- data.frame(do.call("rbind", trip_combinations))
   colnames(trip_combinations.df) <- c("tripID_1", "tripID_2")
 
-  # Within-individual ba -----
+  # Plotting out some UDs ----
+  
+  # birds <- unique(my_gps$ring)
+  # 
+  # for (b in 1:length(birds)) {
+  # 
+  #   # Get focal bird
+  #   ud.df_A <- subset(my_gps, ring == birds[b]) %>% select(tripID, longitude, latitude)
+  #   ud.sp_A <- SpatialPointsDataFrame(coords = ud.df_A[, c("longitude", "latitude")],
+  #                                data = data.frame(id = ud.df_A$tripID))
+  #   ud.est_A <- kernelUD(ud.sp_A[, 1], h = "href", extent = 3, grid = 500)
+  #   ud.95_A <- getverticeshr(ud.est_A, percent = 75)
+  # 
+  #   ud_sf_A <- st_as_sf(ud.95_A)
+  #   ud_sf_A %<>% separate(id, sep = "_", into = c("ring", "season", "dummy", "tripNo")) %>% select(-dummy)
+  # 
+  #   # Random bird
+  #   ud.df_B <- subset(my_gps, ring == birds[sample(length(birds), 1)]) %>% select(tripID, longitude, latitude)
+  #   ud.sp_B <- SpatialPointsDataFrame(coords = ud.df_B[, c("longitude", "latitude")],
+  #                                data = data.frame(id = ud.df_B$tripID))
+  #   ud.est_B <- kernelUD(ud.sp_B[, 1], h = "href", extent = 3, grid = 500)
+  #   ud.95_B <- getverticeshr(ud.est_B, percent = 75)
+  # 
+  #   ud_sf_B <- st_as_sf(ud.95_B)
+  #   ud_sf_B %<>% separate(id, sep = "_", into = c("ring", "season", "dummy", "tripNo")) %>% select(-dummy)
+  #       
+  #   ud_plot <- ggplot() +
+  #     geom_sf(data = ud_sf_A, fill = "blue", alpha = 0.4) +
+  #     geom_sf(data = ud_sf_B, fill = "red", alpha = 0.4) +
+  #     theme_bw()
+  # 
+  #   png(file = paste0("Figures/Workshop/", spec_col[i], "_", birds[b], "_", ud_sf_B$ring[1], ".png"))
+  #   print(ud_plot)
+  #   dev.off()
+  # }
+  
+  # ===# WITHIN INDIVIUDAL ====
   
   # Find the combinations by filtering to same rings and same phase
   ba_within.df <- trip_combinations.df %>%
@@ -766,8 +805,6 @@ for (i in 1:length(spec_col)) {
     filter(phase_comp == "same_phase") %>%
     select(-c(phase_comp, phase_1, phase_2))
 
-  nrow_within <- nrow(ba_within.df)
-  
   ## Calculate the comparisons (slow!)
   ba_within.list <- vector(mode = "list", length = nrow(ba_within.df))
   pb <- txtProgressBar(min = 0, max = nrow(ba_within.df), style = 3)
@@ -806,25 +843,12 @@ for (i in 1:length(spec_col)) {
     ud <- kernelUD(both_trips, h = "href", grid = 100, extent = 0, kern = "bivnorm", same4all = TRUE)
 
     # Calculate UD overlap — Bhattacharyya’s affinity
-    overlap_val <- kerneloverlaphr(ud, method = "BA", percent = 95)[1,2]
+    overlap_val <- kerneloverlaphr(ud, method = "BA")[1,2]
 
     # Output
     output <- data.frame(trip1 = ba_within.df$tripID_1[j],
                          trip2 = ba_within.df$tripID_2[j],
                          ba_val = overlap_val)
-  
-    
-    # trip1 <- convert_to_spdf(subset(my_gps, ID == ba_within.df$tripID_1[j]), proj.dec)
-    # trip2 <- convert_to_spdf(subset(my_gps, ID == ba_within.df$tripID_2[j]), proj.dec)
-    # 
-    # trip1_mat <- as.matrix(trip1@coords)
-    # trip2_mat <- as.matrix(trip2@coords)
-    # 
-    # ba_out <- ba(trip1_mat, trip2_mat, dist.method = "Euclidean")$distance
-    # 
-    # output <- data.frame(trip1 = ba_within.df$tripID_1[j],
-    #                      trip2 = ba_within.df$tripID_2[j],
-    #                      ba = ba_out)
   
     ba_within.list[[j]] <- output 
     
@@ -844,39 +868,55 @@ for (i in 1:length(spec_col)) {
            comp_ind = "within_ring",
            comp_season = ifelse(season_1 == season_2, "within_season", "between_season"))
 
-
-  nrow_within <- nrow(ba_within.df)
   rm(ba_within.df); rm(ba_within.list)
   gc()
   
-  # Between-individual ba -----
+  # ===# BETWEEN INDIVIUDAL ====
   
-  ba_between.df <- trip_combinations.df %>%
-    mutate(ring_1 = sub("_.*", "", tripID_1),
-           ring_2 = sub("_.*", "", tripID_2)) %>%
-    filter(ring_1 != ring_2) %>%
-    select(-c(ring_1, ring_2)) %>%
+  set.seed(817)
+  
+  # Downsample the between dataset to match within 
+  n_within_between = nrow(ba_within.output %>% filter(comp_season == "between_season"))
+  n_within_within = nrow(ba_within.output %>% filter(comp_season == "within_season"))
+  
+  ba_between_between.df <- trip_combinations.df %>%
+    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1"), remove = FALSE) %>%
+    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2"), remove = FALSE) %>%
+    filter(ring1 != ring2) %>%
+    filter(season1 != season2) %>%
+    select(c(tripID_1, tripID_2)) %>%
     # Get phase and filter for same breeding phase
     left_join(my_meta %>% select(ID, phase) %>% 
-                rename(tripID_1 = ID),
-              by = "tripID_1") %>%
+              rename(tripID_1 = ID), by = "tripID_1") %>%
     rename(phase_1 = phase) %>%
     left_join(my_meta %>% select(ID, phase) %>% 
-                rename(tripID_2 = ID),
-              by = "tripID_2") %>%
+                rename(tripID_2 = ID), by = "tripID_2") %>%
     rename(phase_2 = phase) %>%
     mutate(phase_comp = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")) %>%
     filter(phase_comp == "same_phase") %>%
-    select(-c(phase_comp, phase_1, phase_2))
-
-
-  ## Downsample the between-individual data
+    select(-c(phase_comp, phase_1, phase_2)) %>%
+    sample_n(size = n_within_between, replace = FALSE)
   
-  set.seed(817)
-  n_sub = 3 * nrow_within
+  
+  ba_between_within.df <- trip_combinations.df %>%
+    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1"), remove = FALSE) %>%
+    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2"), remove = FALSE) %>%
+    filter(ring1 != ring2) %>%
+    filter(season1 == season2) %>%
+    select(c(tripID_1, tripID_2)) %>%
+    # Get phase and filter for same breeding phase
+    left_join(my_meta %>% select(ID, phase) %>% 
+                rename(tripID_1 = ID), by = "tripID_1") %>%
+    rename(phase_1 = phase) %>%
+    left_join(my_meta %>% select(ID, phase) %>% 
+                rename(tripID_2 = ID), by = "tripID_2") %>%
+    rename(phase_2 = phase) %>%
+    mutate(phase_comp = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")) %>%
+    filter(phase_comp == "same_phase") %>%
+    select(-c(phase_comp, phase_1, phase_2)) %>%
+    sample_n(size = n_within_within, replace = FALSE)
 
-  ba_between <- ba_between.df %>% 
-    sample_n(size = n_sub, replace = FALSE)
+  ba_between <- rbind(ba_between_between.df, ba_between_within.df)
   
   ## Calculate the comparisons
   ba_between.list <- vector(mode = "list", length = nrow(ba_between))
@@ -887,8 +927,8 @@ for (i in 1:length(spec_col)) {
     setTxtProgressBar(pb, k)
     
     # Subset data for both trips
-    trip1 <- subset(my_gps, ID == ba_between.df$tripID_1[k])
-    trip2 <- subset(my_gps, ID == ba_between.df$tripID_2[k])
+    trip1 <- subset(my_gps, ID == ba_between$tripID_1[k])
+    trip2 <- subset(my_gps, ID == ba_between$tripID_2[k])
     
     # Combine trips and factorize ID
     both_trips <- rbind(trip1, trip2) 
@@ -919,22 +959,10 @@ for (i in 1:length(spec_col)) {
     overlap_val <- kerneloverlaphr(ud, method = "BA", percent = 95)[1,2]
 
     # Output
-    output <- data.frame(trip1 = ba_between.df$tripID_1[k],
-                         trip2 = ba_between.df$tripID_2[k],
+    output <- data.frame(trip1 = ba_between$tripID_1[k],
+                         trip2 = ba_between$tripID_2[k],
                          ba_val = overlap_val)
   
-    # trip1 <- convert_to_spdf(subset(my_gps, ID == ba_between$tripID_1[k]), proj.dec)
-    # trip2 <- convert_to_spdf(subset(my_gps, ID == ba_between$tripID_2[k]), proj.dec)
-    # 
-    # trip1_mat <- as.matrix(trip1@coords)
-    # trip2_mat <- as.matrix(trip2@coords)
-    # 
-    # ba_out <- ba(trip1_mat, trip2_mat, dist.method = "Euclidean")$distance
-    # 
-    # output <- data.frame(trip1 = ba_between$tripID_1[k],
-    #                      trip2 = ba_between$tripID_2[k],
-    #                      ba = ba_out)
-    
     ba_between.list[[k]] <- output 
     
   }
@@ -957,14 +985,14 @@ for (i in 1:length(spec_col)) {
   
   save(ba.df, file = paste0("Data_outputs/", species, "_", colony, "_ba_comparison.RData"))
   
-  rm(ba.df); rm(ba_within.output); rm(ba_between.df); rm(ba_between.list); rm(ba_between.output)
+  rm(ba.df); rm(ba_within.output); rm(ba_between.list); rm(ba_between.output)
   gc()
 
 }
   
 ```
 
-#### Modelling DTW differences
+#### Modelling BA differences
 
 The modelling approach is similar to the trip trajectory comparison; that is, I compared within individual, between individual, and between individual but within seasons. There is a heavy right skew in the DTW distances, so to account for this I log-transformed the response so it better approximates a normal distribution - I've taken this approach as I'm specifically interested in the differences between the comparison groups, so interpretation (which is reduced with a log transformation) is less important.
 
@@ -980,20 +1008,20 @@ where:
 
 **Prediction**: within-season and within-individual DTW values are smaller than across-individual and across-seasons (i.e. the tracks are more similar).
 
-```{r model_dtw_differences, eval = FALSE}
+```{r model_ba_differences, eval = FALSE}
 
 # Species-colony combinations
-spec_col <- c("bba_birdis", "bba_kerguelen", "waal_birdis", "waal_crozet")
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 
 # Output containers
-dtw_summary.list <- list()
-dtw_data.list <- list()
-dtw_means.list <- list()
+ba_summary.list <- list()
+ba_data.list <- list()
+ba_means.list <- list()
 
 for (i in seq_along(spec_col)) {
   
   # Load data and prep species/colony labels
-  load(paste0("Data_outputs/", spec_col[i], "_dtw_comparison.RData"))
+  load(paste0("Data_outputs/", spec_col[i], "_ba_comparison.RData"))
   species <- strsplit(spec_col[i], "_")[[1]][1]
   colony <- strsplit(spec_col[i], "_")[[1]][2]
   meta_info <- tibble(species, colony)
@@ -1001,7 +1029,7 @@ for (i in seq_along(spec_col)) {
   # Make dyad ID and subsample to ensure each comparison appears only once (circumvents random effects issues)
   set.seed(817) 
   
-  dtw.df %<>%
+  ba.df %<>%
     mutate(ring_season_1 = paste(ring_1, season_1, sep = "_"),
            ring_season_2 = paste(ring_2, season_2, sep = "_"),
            dyad = if_else(ring_season_1 < ring_season_2,
@@ -1012,23 +1040,28 @@ for (i in seq_along(spec_col)) {
     ungroup() %>%
     select(-c(ring_season_1, ring_season_2))
   
-  dtw_data.list[[i]] <- dtw.df %>%
+  ba_data.list[[i]] <- ba.df %>%
     mutate(species = species, colony = colony)
   
   ## Relevel factors for comparison
-  dtw.df %<>% mutate(comp_ind = as.factor(comp_ind), comp_season = as.factor(comp_season))
+  ba.df %<>% mutate(comp_ind = as.factor(comp_ind), comp_season = as.factor(comp_season))
   
-  dtw.df$comp_ind <- relevel(dtw.df$comp_ind, ref = "within_ring")
-  dtw.df$comp_season <- relevel(dtw.df$comp_season, ref = "within_season")
+  ba.df$comp_ind <- relevel(ba.df$comp_ind, ref = "within_ring")
+  ba.df$comp_season <- relevel(ba.df$comp_season, ref = "within_season")
 
-  ## Exclude within-individual, between season comparison for WAAL at Bird Island
-  if(spec_col[i] == "waal_birdis") { dtw.df %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))}
+  ## Add small constant to handle 0 values
+  n <- nrow(ba.df)
+  ba.df$ba_val <- (ba.df$ba_val * (n - 1) + 0.5) / n
   
-  dtw.df <- droplevels(dtw.df)
-  
-  # Build the model
-  m1 <- lm(dtw ~ comp_season * comp_ind, data = dtw.df)
-
+  ## Remove within ind, within season component for WAAL Bird IS
+  if(i == 3) { 
+    ba.df %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))
+    ba.df <- droplevels(ba.df)
+    
+    m1 <- betareg(ba_val ~ comp_ind + comp_season, data = ba.df) } else {
+        m1 <- betareg(ba_val ~ comp_ind * comp_season, data = ba.df)
+    }
+ 
   ## Diagnostics
   # plot(m1, resid(., scaled=TRUE) ~ fitted(.), abline = 0)
   # qqnorm(resid(m1))
@@ -1059,105 +1092,93 @@ for (i in seq_along(spec_col)) {
   m1_out <- extract_output.lm(m1) %>% mutate(species = species, colony = colony) %>% relocate(c(species, colony), .before = Term)
   
   # Store results
-  dtw_summary.list[[i]] <- m1_out
-  dtw_means.list[[i]] <- m1_em
+  ba_summary.list[[i]] <- m1_out
+  ba_means.list[[i]] <- m1_em
   
 }
-# Combine and save
-dtw_summary <- bind_rows(dtw_summary.list)
-dtw_data    <- bind_rows(dtw_data.list)
-dtw_means   <- bind_rows(dtw_means.list)
 
-save(dtw_summary, file = "Data_outputs/dtw_model_summary.RData")
-save(dtw_data,    file = "Data_outputs/dtw_data_combined.RData")
-save(dtw_means,   file = "Data_outputs/dtw_means.RData")
+# Combine and save
+ba_summary <- bind_rows(ba_summary.list)
+ba_data    <- bind_rows(ba_data.list)
+ba_means   <- bind_rows(ba_means.list)
+
+save(ba_summary, file = "Data_outputs/ba_model_summary.RData")
+save(ba_data,    file = "Data_outputs/ba_data_combined.RData")
+save(ba_means,   file = "Data_outputs/ba_means.RData")
 
 ```
 
-```{r plot_dtw_diffs, fig.dim=c(6,6)}
+```{r plot_ba_diffs, fig.dim=c(6,6)}
 
-load("Data_outputs/dtw_means.RData")
-dtw_means %<>% filter(!is.na(comp_season)) %>% filter(!is.na(comp_ind))
+load("Data_outputs/ba_means.RData")
+ba_means %<>% filter(!is.na(comp_season)) %>% filter(!is.na(comp_ind))
+
+## Drop within ind, between seasons for WAAL Bird Island
+ba_means %<>% filter(!(species == "waal" & colony == "birdis" & comp_ind == "within_ring" & comp_season == "between_season"))
 
 # Data wrangling for figure
-dtw_plot <- dtw_means %>%
+ba_plot <- ba_means %>%
   mutate(species = case_when(
-          species == "bba" ~ "BBAL",
+          species == "bbal" ~ "BBAL",
           species == "waal" ~ "WAAL",
           TRUE ~ species),
     colony = case_when(
       colony == "birdis" ~ "Bird Island",
-      colony == "kerguelen" ~ "Kerguelen",
-      colony == "crozet" ~ "Crozet",
+      colony == "ker" ~ "Kerguelen",
+      colony == "cro" ~ "Crozet",
       TRUE ~ colony),
-    spec_col = paste(species, colony, sep = ", "),
-    comp = case_when(
-      comp_season == "within_season" & comp_ind == "within_ring" ~ "Within-individual, within season",
-      comp_season == "between_season" & comp_ind == "within_ring" ~ "Within-individual, across seasons",
-      comp_season == "within_season" & comp_ind == "between_ring" ~ "Among-individual, within seasons",
-      comp_season == "between_season" & comp_ind == "between_ring" ~ "Among-individual, across season",
-      TRUE ~ paste(comp_season, comp_ind, sep = ", "))
-  )
+    spec_col = paste(species, colony, sep = ", ") ) %>%
+  rename(lower.CL = asymp.LCL,
+         upper.CL = asymp.UCL)
 
-# Define the order of Comparison levels
-comparison_levels <- c(
-  "Within-individual, within season",
-  "Within-individual, across seasons",
-  "Among-individual, within seasons",
-  "Among-individual, across season"
-)
-
-dtw_plot$comp <- factor(dtw_plot$comp, levels = comparison_levels)
-
-#png(filename = "Figures/MS Figures/FIGX_spatial_repeatability_dtw_comparison.png", width = 6, height = 6, units = "in", res = 900)
-ggplot(dtw_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
+png(filename = "Figures/MS Figures/FIGX_spatial_repeatability_ba_comparison.png", width = 6, height = 6, units = "in", res = 900)
+ggplot(ba_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
   geom_point() +
   geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
                 width = 0.1) +
   geom_line(aes(group = comp_season)) +
-  labs(x = "", colour = "", y = "Logged DTW value") +
-  facet_wrap(~spec_col, scales = "free") +
+  labs(x = "", colour = "", y = "Bhattacharyya’s affinity") +
+  facet_wrap(~spec_col) +
   scale_colour_viridis_d(labels = c("Within season", "Across seasons")) +
   scale_x_discrete(labels = c("Within individual", "Among individual")) +
   theme_bw() +
-  theme(legend.position = c(0.33, 0.62),
+  theme(legend.position = c(0.36, 0.97),
         legend.background = element_rect(fill = "transparent", colour = NA),
         legend.key = element_rect(fill = "transparent", colour = NA))
-#dev.off()
-
-
+dev.off()
 
 
 ```
 
-```{r dtw_similarity_table, echo = FALSE}
+```{r BA_similarity_table, echo = FALSE}
 
-load("Data_outputs/dtw_model_summary.RData")
+load("Data_outputs/ba_model_summary.RData")
 
 # Reformat the table
-dtw_summary %<>%
+ba_summary %<>%
  mutate(Species = toupper(species),
         Colony = ifelse(colony == "birdis", "Bird Island",
-                         ifelse(colony == "crozet", "Crozet",
+                         ifelse(colony == "cro", "Crozet",
                                 "Kerguelen")), 
         Term = case_when(
             Term == "(Intercept)"  ~ "Intercept",
             Term == "comp_seasonbetween_season" ~ "Across seasons",
             Term == "comp_indbetween_ring" ~ "Among individuals",
-            Term == "comp_seasonbetween_season:comp_indbetween_ring"~ "Among individuals * Across seasons"),
-         Estimate = paste0(signif(Estimate,4), " \u00B1 ", signif(Std_Error, 4)),
-         p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 4), nsmall = 4, scientific = FALSE))) %>%
+            Term == "comp_indbetween_ring:comp_seasonbetween_season"~ "Among individuals * Across seasons"),
+         Estimate = paste0(signif(Estimate, 2), " \u00B1 ", signif(Std_Error, 2)),
+         t_value = signif(t_value, 2), 
+         p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 2), nsmall = 2, scientific = FALSE))) %>%
   rename('t value' = t_value, 'p value' = p_value) %>%
   select(-c(species, colony, Std_Error)) %>%
   relocate(c(Species, Colony), .before = Term) %>%
   arrange(Species, Colony) %>%
-  mutate(CI = paste0("[", signif(CI_lower, 4), ", ", signif(CI_upper, 4), "]")) %>%
+  mutate(CI = paste0("[", signif(CI_lower, 2), ", ", signif(CI_upper, 2), "]")) %>%
   relocate(CI, .before = "t value") %>%
   select(-c(CI_lower, CI_upper))
          
-knitr::kable(dtw_summary, format = "html", 
-             caption = '<span style="font-size: 12px;">Table 3. Model outputs for DTW comparisons. DTW measures the difficulty in transposing one GPS track onto another; therefore higher values indicate greater differences. DTW values are presented on the log scale..</span>', digits = 3) %>%
-  row_spec(which(dtw_summary$`p value` < 0.05 & dtw_summary$Term != "Intercept"), bold = TRUE) %>%
+knitr::kable(ba_summary, format = "html", 
+             caption = '<span style="font-size: 12px;">Table 3. Model outputs for BA comparisons. Bhattacharyyas Affinity measures overlap in two utilisation distributions.".</span>', digits = 3) %>%
+  row_spec(which(ba_summary$`p value` < 0.05 & ba_summary$Term != "Intercept"), bold = TRUE) %>%
   collapse_rows(columns = c(1, 2)) %>%
   kable_styling(font_size = 9)
 
@@ -2152,3 +2173,19 @@ dtw.plot_bySex
 ##### Overall
 
 Looking at the outputs, there is hardly any difference between the analyses where individuals are grouped by sex and when they are not, at least for the bearing differences, so I think I'm safe to continue. I'm not interested in the effect of sex *per se*, so there's no reason to go deeper into this.
+
+
+## Appendix
+
+
+#### Notes on Dynamic Time Warping and Earth Movers Distance
+
+*Quick note*: originally I tried the Earth mover's distance (EMD): this calculates the effort required to transform one image to another. In the context of GPS tracks, it quantifies the work needed to transpose one track to another. Therefore, a low EMD indicates high similarity between tracks, and a high EMD indicates low similarity. However, **this was extremely computationally intensive**, especially for long tracks.
+
+As a result, I switched to an alternative method called **dynamic time warping**. This is much faster, and also retains the sequential structure of the track so is probably better for movement data. There is even a clustering package available called 'dtwclust' if I need to speed things up more quickly.
+
+Briefly, DTW recursively compares all point combinations between two trajectories and identifies the smallest path between them. This does make it sensitive to noise, as it will also compare outliers, but this is the case for EMD too. The DTW value essentially measures the 'warping' needed to aling to two trajectories. As a result, a high DTW suggests low similarity, and a low DTW suggests high similarity.
+
+There is a good write-up on DTW in [Cleasby et al. 2019, Behav Ecol Socio](https://link.springer.com/article/10.1007/s00265-019-2761-1#Sec18) that shows it performing well in comparison to several measures of trajectory similarity.
+
+For this analysis, I used the same modelling approach as for the trip trajectories analysis, but using DTW as my response. As with the trip trajectories comparison, there are a very high number of possible comparisons, so I downsampled the between-individual datasets to 3x the size of the within-individual datasets.
