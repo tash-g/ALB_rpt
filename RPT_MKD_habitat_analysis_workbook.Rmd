@@ -23,7 +23,7 @@ source("RPT_functions.R")
 source("condR.R")
 
 # Define & load the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "tidyr", "lubridate", "DHARMa", "data.table", "ggpubr",  "kableExtra", "ggridges", "corrplot", "pROC", "ggeffects", "glmmTMB", "brms") 
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "tidyr", "lubridate", "DHARMa", "data.table", "ggpubr",  "kableExtra", "ggridges", "corrplot", "pROC", "ggeffects", "glmmTMB", "brms", "MASS") 
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -1136,7 +1136,8 @@ pnts_all %<>%
                          as.numeric(year(date_hourly)),
                          as.numeric(year(date_hourly)) + 1 ),
          sst_scaled2 = sst_scaled^2,
-                     bathy_scaled2 = bathy_scaled^2)
+         bathy_scaled2 = bathy_scaled^2,
+         chl_scaled_log = scale(log(chlA + 0.01)) )
 
 # used_avail_summary <- pnts_all %>%
 #   group_by(ID) %>%
@@ -1320,7 +1321,7 @@ There are only 7 individual WAAL at Bird Island with \> 1 season of data, so I d
 
 tok <- Sys.time()
 waal_birdis_glmm.between_sst <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
+  used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +
          (1 | ID ) + (0 + sst_scaled | ID ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
@@ -1332,7 +1333,7 @@ save(waal_birdis_glmm.between_sst, file = "Data_outputs/waal_birdis_glmm_between
 rm(waal_birdis_glmm.between_sst); gc()
 
 waal_birdis_glmm.between_bathy <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
+  used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +
         (1 | ID ) + (0 + bathy_scaled | ID ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
@@ -1342,8 +1343,8 @@ rm(waal_birdis_glmm.between_bathy); gc()
 
 
 waal_birdis_glmm.between_chl <-  glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 | ID ) + (0 + chl_scaled | ID ) + (1 | tripID),
+  used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +
+        (1 | ID ) + (0 + chl_scaled_log | ID ) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -1356,47 +1357,35 @@ rm(waal_birdis_glmm.between_chl); gc()
 
 ```{r waal_birdis_diagnostics, eval = FALSE}
 
-load("Data_outputs/waal_birdis_glmm_between_sst.RData")
-load("Data_outputs/waal_birdis_glmm_between_bathy.RData")
-load("Data_outputs/waal_birdis_glmm_between_chl.RData")
-
-
-### Diagnostics ----
-
-model_info <- list(
-  between_sst =   list(model = waal_birdis_glmm.between_sst, data = pnts_all),
-  between_bathy = list(model = waal_birdis_glmm.between_bathy, data = pnts_all),
-  between_chl =   list(model = waal_birdis_glmm.between_chl, data = pnts_all),
-)
+env_vars = c("sst", "bathy", "chl")
 
 auc_results <- data.frame(
   model = character(),
   auc = numeric()  )
 
-# Loop through models and compute AUC, output diagnostics
-for (model_name in names(model_info)) {
+for (i in 1:length(env_vars)) {
 
-  this_model <- model_info[[model_name]]$model
-  this_data <- model_info[[model_name]]$data
+  # Get models
+  load(paste0("Data_outputs/waal_birdis_glmm_between_", env_vars[i], ".RData"))
+  mod_between = get(paste0("waal_birdis_glmm.between_", env_vars[i]))
+
+  # print("Covariance structure: ")
+  # print(VarCorr(mod_between))
+  # 
+  # print("Collinearity: ")
+  # print(performance::check_collinearity(mod_between))
+  # 
+  # print(paste0("DONE. ---------------------------"))
   
-  print(paste0("Next model: ", model_name, " ------------------------------------"))
+  preds <- predict(mod_between, type = "response")
+  auc_value <- as.numeric(auc(pnts_all$used, preds))
   
-  print("Covariance structure: ")
-  print(VarCorr(this_model))
+  waal_birdis_auc_results <- rbind(auc_results, data.frame(level = "between", env = env_vars[i], auc = auc_value))
   
-  print("Collinearity: ")
-  print(performance::check_collinearity(this_model))
-  
-  print(paste0("DONE. ---------------------------"))
-  
-  preds <- predict(this_model, type = "response")
-  auc_value <- as.numeric(auc(this_data$used, preds))
-  
-  auc_results <- rbind(auc_results, data.frame(model = model_name, auc = auc_value))
 }
 
-auc_results %<>% mutate(species = "WAAL", colony = "birdis") %>% relocate(c(species, colony), .before = model)
-
+waal_birdis_auc_results %<>% mutate(species = "WAAL", colony = "birdis") %>% relocate(c(species, colony), .before = level)
+save(waal_birdis_auc_results, file = "Data_outputs/waal_birdis_auc_habitat_selection.RData")
 
 ```
 
@@ -1437,14 +1426,24 @@ Repeatability at the edges of chlorophyll is exceptionally high, but almost cert
 
 load("Data_inputs/waal_birdis_habitat_data.RData")
 
-# Calculate conditional repeatability ------
+# Add a small constant to avoid log(0)
+pnts_all %<>% mutate(chl_scaled_log = scale(log(chlA + 0.01)) )
+
+# [ 1 ] Calculate conditional repeatability ------
+
+## Decide on simulation number
+n_sim <- 100
+
+## Approximate degrees of freedom for uncertainty estimates:
+df_ID <- length(unique(pnts_all$ID)) - 1
+df_tripID <- length(unique(pnts_all$tripID)) - 1
 
 ## Store envronmental variables
 env_vars = c("sst", "bathy", "chl")
 
 sst_scaled <- unlist(pnts_all$sst_scaled)
 bathy_scaled <- unlist(pnts_all$bathy_scaled)
-chl_scaled <- unlist(pnts_all$chl_scaled)
+chl_scaled <- unlist(pnts_all$chl_scaled_log)
 
 var_map <- list(
   sst = sst_scaled,
@@ -1463,12 +1462,90 @@ for (i in 1:length(env_vars)) {
 
   mod_between = get(paste0("waal_birdis_glmm.between_", env_vars[i]))
   
-  # Calculate conditional repeatability parameters
+  # Get colour
+  line_colour <- if (grepl("bathy", habitat_var)) {
+         bathy_col   } else if (grepl("chl", habitat_var)) {
+  chl_col  } else if (grepl("sst", habitat_var)) {
+  sst_col } 
+  
+  ## Get environmental metrics ====
   
   env_current <- var_map[[env_vars[i]]]
   
-  ## Between ##
- 
+  ## Summarise data 
+  meanX <- mean(env_current)
+  varX <- var(env_current)
+  xrange <- range(env_current)
+
+  # Extract uncertainty in repeatability estimates ====
+  
+  ## Extract fixed effects and their covariance matrix
+  beta_hat <- fixef(mod_between)$cond
+  vcov_beta <- vcov(mod_between)
+  
+  ## Extract variance components (point estimates)
+  vc <- VarCorr(mod_between)$cond
+  var_int <- as.numeric(vc$ID[1,1])         
+  var_slope <- as.numeric(vc$ID.1[1,1])     
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+  var_resid <- (pi^2)/3                     
+  
+  ## Get covariance matrix for intercept/slope random effects
+  Sigma = matrix( c(
+    var_int, 0,
+    0, var_slope),
+  nrow = 2) 
+  
+
+  # Bootstrap conditional repeatability uncertainty ====
+  set.seed(123)
+  
+  condR_sim <- list()
+  
+  for(n in 1:n_sim){
+    
+    # 1. Sample fixed effects from multivariate normal
+    vcov_mat_numeric <- vcov_beta$cond
+    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
+    
+    # 2. Sample variance components from scaled chi-square approximations:
+    # (This is a rough approximation — bootstrapping is better but slower)
+    
+    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
+    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+    
+    ## Make the covariance matrix
+    Sigma_sim = matrix( c( var_int_sim, 0,
+                           0, var_slope_sim), nrow = 2)
+    
+    # 3. Compute conditional repeatability
+    condR_df <- condR(
+                  betaX = beta_sim[habitat_var], 
+                  meanX = meanX,
+                  Vx = varX,
+                  Vr = var_resid,
+                  Sigma = Sigma_sim, 
+                  Vo = var_tripID_sim,
+                  xrange = xrange)$condR
+  
+    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
+  
+  }
+  
+  ## Summarise output
+  condR_all <- bind_rows(condR_sim)
+
+  condR_uncertainty <- condR_all %>%
+    group_by(x) %>%
+    summarise(
+      median = median(condR, na.rm = TRUE),
+      lower = quantile(condR, 0.025, na.rm = TRUE),
+      upper = quantile(condR, 0.975, na.rm = TRUE)
+    ) %>% ungroup()
+    
+  
+  # Estimate conditional repeatability ====
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_between)$cond$ID), 0,
     0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
@@ -1488,8 +1565,8 @@ for (i in 1:length(env_vars)) {
                             marginal_R2 = res_between$Rmar,
                             med_rpt = median(res_between$condR$condR),
                             env = env_vars[i],
-                            species = "WAAL",
-                            colony = "Bird Island", 
+                            species = "BBAL",
+                            colony = "Kerguelen", 
                             level = "Between")
   
   rownames(res_between.summary) <- NULL
@@ -1498,11 +1575,17 @@ for (i in 1:length(env_vars)) {
     relocate(c(species, colony, level, env), .before = var_between)
   
   cond_res.list[[i]] <- res.summary
-  
+
+  # Plot conditional repeatability ==== 
+  rug_data <- data.frame(env_current = sample(env_current, size = 1000))
+
   condR_plot <- ggplot() +
-    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = "#FFC107", size = 1) +
+    geom_line(data = res_between$condR, aes(x = x, y = condR/100), col = "#FFC107", size = 1) +
+    geom_ribbon(data = condR_uncertainty, aes(x = x, ymin = lower/100, ymax = upper/100), fill = "#f3a20c", alpha = 0.4) +
     geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
+    geom_rug(data = data.frame(rug_data), aes(x = env_current), alpha = 0.3, sides = "t", col = line_colour) +
     labs(y = "Conditional repeatability") +
+    expand_limits(y = 0) +
     theme_bw() 
 
   assign(paste0(env_vars[i], "_condR_plot"), condR_plot)
@@ -1521,6 +1604,7 @@ save(condR_results, file = "Data_outputs/waal_birdis_condR_results.RData")
 for (i in 1:length(env_vars)) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
+  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
   load(paste0("Data_outputs/waal_birdis_glmm_between_", env_vars[i], ".RData"))
@@ -1572,7 +1656,7 @@ for (i in 1:length(env_vars)) {
 png("Figures/waal_birdis_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + labs(x = "Scaled bathymetry (m below sea level)"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
-          chl_pred_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
+          chl_pred_plot + labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
           bathy_condR_plot + labs(x = "Scaled bathymetry (m below sea level)"),
           sst_condR_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
           chl_condR_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")"))+ theme(axis.title.y = element_blank()),
@@ -1588,7 +1672,7 @@ Chlorophyll values are heavily skewed, with extremely high concentrations occurr
 ```{r waal_cro_process_data, eval = FALSE}
 
 # Do some data cleaning
-load("Data_inputs/waal_crozet_sst-bathy-chla_data_population_level.RData")
+load("Data_inputs/waal_cro_sst-bathy-chla_data_population_level.RData")
 
 ## Remove NAs and set distance to km; remove birds with too few data points (i.e. fewer than two day's worth of data)
 pnts_all %<>% 
@@ -1630,7 +1714,8 @@ pnts_all %<>%
                          as.numeric(year(date_hourly)),
                          as.numeric(year(date_hourly)) + 1 ),
          sst_scaled2 = sst_scaled^2,
-                     bathy_scaled2 = bathy_scaled^2) 
+         bathy_scaled2 = bathy_scaled^2,
+         chl_scaled_log = scale(log(chlA + 0.01)) )
 
 save(pnts_all, file = "Data_inputs/waal_cro_habitat_data.RData")
 
@@ -1875,60 +1960,58 @@ rm(waal_cro_glmm.between_chl); gc()
 
 ```
 
-#### Diagnostics
+##### Diagnostics
 
 ```{r waal_cro_diagnostics, eval = FALSE}
 
-load("Data_outputs/waal_cro_glmm_within_sst.RData")
-load("Data_outputs/waal_cro_glmm_within_bathy.RData")
-load("Data_outputs/waal_cro_glmm_within_chl.RData")
-
-load("Data_outputs/waal_cro_glmm_between_sst.RData")
-load("Data_outputs/waal_cro_glmm_between_bathy.RData")
-load("Data_outputs/waal_cro_glmm_between_chl.RData")
-
-
-model_info <- list(
-  within_sst =    list(model = waal_cro_glmm.within_sst, data = pnts_all),
-  within_bathy =  list(model = waal_cro_glmm.within_bathy, data = pnts_all),
-  within_chl =    list(model = waal_cro_glmm.within_chl, data = pnts_all),
-  between_sst =   list(model = waal_cro_glmm.between_sst, data = pnts_all),
-  between_bathy = list(model = waal_cro_glmm.between_bathy, data = pnts_all),
-  between_chl =   list(model = waal_cro_glmm.between_chl, data = pnts_all)
-)
+env_vars = c("sst", "bathy", "chl")
 
 auc_results <- data.frame(
   model = character(),
   auc = numeric()  )
 
-# Loop through models and compute AUC, output diagnostics
-for (model_name in names(model_info)) {
+for (i in 1:length(env_vars)) {
 
-  this_model <- model_info[[model_name]]$model
-  this_data <- model_info[[model_name]]$data
+  # Get models
+  load(paste0("Data_outputs/waal_cro_glmm_between_", env_vars[i], ".RData"))
+  mod_between = get(paste0("waal_cro_glmm.between_", env_vars[i]))
+
+  load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars[i], ".RData"))
+  mod_within = get(paste0("waal_cro_glmm.within_", env_vars[i]))
+
+  # print("Covariance structure: ")
+  # print(VarCorr(mod_between))
+  # print(VarCorr(mod_within))
+  # 
+  # print("Collinearity: ")
+  # print(performance::check_collinearity(mod_between))
+  # print(performance::check_collinearity(mod_within))
+  # 
+  # print(paste0("DONE. ---------------------------"))
   
-  print(paste0("Next model: ", model_name, " ------------------------------------"))
+  preds.between <- predict(mod_between, type = "response")
+  auc_value.between <- as.numeric(auc(pnts_all$used, preds.between))
   
-  print("Covariance structure: ")
-  print(VarCorr(this_model))
+  preds.within <- predict(mod_within, type = "response")
+  auc_value.within <- as.numeric(auc(pnts_all$used, preds.within))
   
-  print("Collinearity: ")
-  print(performance::check_collinearity(this_model))
+  auc_between <- cbind(auc_value.between, "between")
+  auc_within <- cbind(auc_value.within, "within")
   
-  print(paste0("DONE. ---------------------------"))
+  waal_cro_auc_results <- data.frame(rbind(auc_between, auc_within)) %>% 
+                              mutate(env = env_vars[i]) %>%
+                              rename(level = V2, auc = auc_value.between) %>%
+                              relocate(auc, .after = env)
   
-  preds <- predict(this_model, type = "response")
-  auc_value <- as.numeric(auc(this_data$used, preds))
-  
-  auc_results <- rbind(auc_results, data.frame(model = model_name, auc = auc_value))
 }
 
-auc_results %<>% mutate(species = "WAAL", colony = "crozet") %>% relocate(c(species, colony), .before = model)
-
+waal_cro_auc_results %<>% mutate(species = "WAAL", colony = "crozet") %>% relocate(c(species, colony), .before = level)
+save(waal_cro_auc_results, file = "Data_outputs/waal_cro_auc_habitat_selection.RData")
 
 ```
 
-#### Fixed effects
+
+##### Fixed effects
 
 ```{r waal_cro_fixed_effects_predictions }
 
@@ -1957,7 +2040,7 @@ gc()
 
 ```
 
-#### Conditional repeatability
+##### Conditional repeatability
 
 ```{r waal_cro_conditional_repeatability}
 
@@ -1965,7 +2048,15 @@ load("Data_inputs/waal_cro_habitat_data.RData")
 
 env_vars = c("sst", "bathy", "chl")
 
-# Calculate conditional repeatability ------
+# [ 1 ] Calculate conditional repeatability ------
+
+## Decide on simulation number
+n_sim <- 100
+
+## Approximate degrees of freedom for uncertainty estimates:
+df_ID <- length(unique(pnts_all$ID)) - 1
+df_ID_season <- length(unique(pnts_all$ID_season)) - 1
+df_tripID <- length(unique(pnts_all$tripID)) - 1
 
 ## Store envronmental variables
 sst_scaled <- unlist(pnts_all$sst_scaled)
@@ -1992,11 +2083,157 @@ for (i in 1:length(env_vars)) {
   mod_within = get(paste0("waal_cro_glmm.within_", env_vars[i]))
   mod_between = get(paste0("waal_cro_glmm.between_", env_vars[i]))
   
-  # Calculate conditional repeatability parameters
-  
+  ## Get environmental metrics ====
   env_current <- var_map[[env_vars[i]]]
   
-  ## Within ##
+  ## Summarise data 
+  meanX <- mean(env_current)
+  varX <- var(env_current)
+  xrange <- range(env_current)
+  
+  # Extract uncertainty in repeatability estimates ====
+  
+  ## ~ Between ~ ----
+  
+  ## Extract fixed effects and their covariance matrix
+  beta_hat <- fixef(mod_between)$cond
+  vcov_beta <- vcov(mod_between)
+  
+  ## Extract variance components (point estimates)
+  vc <- VarCorr(mod_between)$cond
+  var_int <- as.numeric(vc$ID[1,1])         
+  var_slope <- as.numeric(vc$ID.1[1,1])     
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+  var_resid <- (pi^2)/3                     
+  
+  ## Get covariance matrix for intercept/slope random effects
+  Sigma = matrix( c(
+    var_int, 0,
+    0, var_slope),
+    nrow = 2) 
+  
+  
+  # Bootstrap conditional repeatability uncertainty ====
+  set.seed(123)
+  
+  condR_sim <- list()
+  
+  for(n in 1:n_sim){
+    
+    # 1. Sample fixed effects from multivariate normal
+    vcov_mat_numeric <- vcov_beta$cond
+    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
+    
+    # 2. Sample variance components from scaled chi-square approximations:
+    # (This is a rough approximation — bootstrapping is better but slower)
+    
+    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
+    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+    
+    ## Make the covariance matrix
+    Sigma_sim = matrix( c( var_int_sim, 0,
+                           0, var_slope_sim), nrow = 2)
+    
+    # 3. Compute conditional repeatability
+    condR_df <- condR(
+      betaX = beta_sim[habitat_var], 
+      meanX = meanX,
+      Vx = varX,
+      Vr = var_resid,
+      Sigma = Sigma_sim, 
+      Vo = var_tripID_sim,
+      xrange = xrange)$condR
+    
+    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
+    
+  }
+  
+  ## Summarise output
+  condR_all <- bind_rows(condR_sim)
+  
+  condR_uncertainty.between <- condR_all %>%
+    group_by(x) %>%
+    summarise(
+      median = median(condR, na.rm = TRUE),
+      lower = quantile(condR, 0.025, na.rm = TRUE),
+      upper = quantile(condR, 0.975, na.rm = TRUE)
+    ) %>% ungroup() %>%
+    mutate(level = "between")
+  
+  
+  ## ~ Within ~ ----
+  
+  ## Extract fixed effects and their covariance matrix
+  beta_hat <- fixef(mod_within)$cond
+  vcov_beta <- vcov(mod_within)
+  
+  ## Extract variance components (point estimates)
+  vc <- VarCorr(mod_within)$cond
+  var_int <- as.numeric(vc$ID_season[1,1])         
+  var_slope <- as.numeric(vc$ID_season.1[1,1])     
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+  var_resid <- (pi^2)/3                     
+  
+  ## Get covariance matrix for intercept/slope random effects
+  Sigma = matrix( c(
+    var_int, 0,
+    0, var_slope),
+    nrow = 2) 
+  
+  set.seed(123)
+  
+  condR_sim <- list()
+  
+  for(n in 1:n_sim){
+    
+    # 1. Sample fixed effects from multivariate normal
+    vcov_mat_numeric <- vcov_beta$cond
+    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
+    
+    # 2. Sample variance components from scaled chi-square approximations:
+    # (This is a rough approximation — bootstrapping is better but slower)
+    
+    var_int_sim <- var_int * rchisq(1, df = df_ID_season) / df_ID_season
+    var_slope_sim <- var_slope * rchisq(1, df = df_ID_season) / df_ID_season
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+    
+    ## Make the covariance matrix
+    Sigma_sim = matrix( c( var_int_sim, 0,
+                           0, var_slope_sim), nrow = 2)
+    
+    # 3. Compute conditional repeatability
+    condR_df <- condR(
+      betaX = beta_sim[habitat_var], 
+      meanX = meanX,
+      Vx = varX,
+      Vr = var_resid,
+      Sigma = Sigma_sim, 
+      Vo = var_tripID_sim,
+      xrange = xrange)$condR
+    
+    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
+    
+  }
+  
+  ## Summarise output
+  condR_all <- bind_rows(condR_sim)
+  
+  condR_uncertainty.within <- condR_all %>%
+    group_by(x) %>%
+    summarise(
+      median = median(condR, na.rm = TRUE),
+      lower = quantile(condR, 0.025, na.rm = TRUE),
+      upper = quantile(condR, 0.975, na.rm = TRUE)
+    ) %>% ungroup() %>%
+    mutate(level = "within")
+  
+  condR_uncertainty <- rbind(condR_uncertainty.between, condR_uncertainty.within)
+  
+  
+  # Estimate conditional repeatability ====
+  
+  ## ~ Within ~ ----
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
     0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
@@ -2023,7 +2260,7 @@ for (i in 1:length(env_vars)) {
   
   rownames(res_within.summary) <- NULL
    
-  ## Between ##
+  ## ~ Between ~ ----
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_between)$cond$ID), 0,
     0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
@@ -2056,6 +2293,8 @@ for (i in 1:length(env_vars)) {
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
+    geom_ribbon(data = condR_uncertainty %>% filter(level == "between"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = "#f3a20c", alpha = 0.4) +
+    geom_ribbon(data = condR_uncertainty %>% filter(level == "within"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = "#D81B60", alpha = 0.4) +
     geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = "#FFC107", size = 1) +
     geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = "#D81B60", size = 1) +
     geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
@@ -2075,7 +2314,7 @@ for (i in 1:length(env_vars)) {
 condR_results <- do.call("rbind", cond_res.list)
 save(condR_results, file = "Data_outputs/waal_cro_condR_results.RData")
 
-# Plot individual slopes 
+# [ 2 ] Plot individual slopes ---- 
 
 for (i in 1:length(env_vars)) {
 
@@ -2133,6 +2372,8 @@ for (i in 1:length(env_vars)) {
   
 }
 
+
+# [ 3 ] Final plot ----
 
 png("Figures/waal_cro_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + labs(x = "Scaled bathymetry (m below sea level)"), 
@@ -2344,10 +2585,7 @@ pnts_all %<>%
   mutate(ID_season = paste0(ID, "_", season),
          tripID = paste0(ID, "_", tripID))  %>%
   group_by(ID_season) %>%
-  mutate(n_recs = n_distinct(date_hourly),
-         flag = ifelse(n_recs < 24, "flag", "fine")) %>%
-  filter(flag == "fine") %>%
-  select(-c(flag, n_recs)) 
+  ungroup()
 
 ## Resample to maintain used:available ratio
 pnts_all %<>%
@@ -2369,7 +2607,15 @@ pnts_all %<>%
   }) %>%
   ungroup()
 
-## Scale the variables
+## Drop individuals with insufficient data
+pnts_all %<>%
+  group_by(ID_season) %>%
+  mutate(n_recs = n_distinct(date_hourly)) %>%
+  filter(n_recs > 24) %>%
+  select(-c(n_recs)) %>%
+  ungroup()
+
+## Scale the variables 
 pnts_all %<>%
   ungroup() %>%
   mutate(sst_scaled = scale_2SD(SST),
@@ -2380,17 +2626,17 @@ pnts_all %<>%
                          as.numeric(year(date_hourly)),
                          as.numeric(year(date_hourly)) + 1 ),
          sst_scaled2 = sst_scaled^2,
-                     bathy_scaled2 = bathy_scaled^2) 
+         bathy_scaled2 = bathy_scaled^2 )
 
-used_avail_summary <- pnts_all %>%
-  group_by(ID) %>%
-  summarise(
-    used_count = sum(used == 1),
-    avail_count = sum(used == 0),
-    total = n(),
-    used_ratio = used_count / total )
-
-hist(used_avail_summary$used_ratio)
+# used_avail_summary <- pnts_all %>%
+#   group_by(ID) %>%
+#   summarise(
+#     used_count = sum(used == 1),
+#     avail_count = sum(used == 0),
+#     total = n(),
+#     used_ratio = used_count / total )
+# 
+# hist(used_avail_summary$used_ratio)
 
 save(pnts_all, file = "Data_inputs/bbal_birdis_habitat_data.RData")
 
@@ -2557,7 +2803,24 @@ bbal_birdis_glmm.within_sst <- glmmTMB(
   data = pnts_all,
   family = binomial() )
 
-save(bbal_birdis_glmm.within_sst, file = "Data_outputs/bbal_birdis_glmm_within_sst.RData")
+tok <- Sys.time()
+
+pnts_sub <- pnts_all %>% sample_n(100000) 
+
+options(mc.cores = parallel::detectCores())
+
+bbal_birdis_brms <- brm(
+  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
+    (1 | ID) + (0 + sst_scaled | ID_season) + (1 | ID_season) + (1 | tripID),
+  data = pnts_sub,
+  family = bernoulli(link = "logit"),
+  chains = 4, cores = 4, iter = 4000, control = list(adapt_delta = 0.95),
+  backend = "cmdstanr")
+
+tik <- Sys.time()
+tik-tok
+
+save(bbal_birdis_glmm.within_sst, file = "Data_outputs/bbal_birdis_brm_within_sst.RData")
 rm(bbal_birdis_glmm.within_sst); gc()
 
 
@@ -2573,7 +2836,7 @@ rm(bbal_birdis_glmm.within_bathy); gc()
 
 bbal_birdis_glmm.within_chl <-  glmmTMB(
   used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 | ID_season) + (0 + chl_scaled | ID_season) + (1 | tripID),
+        (1 | ID_season) + (0 + chl_scaled_log | ID_season) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2594,7 +2857,7 @@ rm(bbal_birdis_glmm.between_sst); gc()
 
 
 bbal_birdis_glmm.between_bathy <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
+  used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +
         (1 | ID) + (0 + bathy_scaled | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
@@ -2604,8 +2867,8 @@ rm(bbal_birdis_glmm.between_bathy); gc()
 
 
 bbal_birdis_glmm.between_chl <- glmmTMB(
-  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
-        (1 | ID) + (0 + chl_scaled | ID) + (1 | tripID),
+  used ~ sst_scaled + bathy_scaled + chl_scaled_log + dist_col_scaled + phase +
+        (1 | ID) + (0 + chl_scaled_log | ID) + (1 | tripID),
   data = pnts_all,
   family = binomial() )
 
@@ -2618,52 +2881,49 @@ rm(bbal_birdis_glmm.between_chl); gc()
 
 ```{r bbal_birdis_diagnostics, eval = FALSE}
 
-load("Data_outputs/bbal_birdis_glmm_within_sst.RData")
-load("Data_outputs/bbal_birdis_glmm_within_bathy.RData")
-load("Data_outputs/bbal_birdis_glmm_within_chl.RData")
-
-load("Data_outputs/bbal_birdis_glmm_between_sst.RData")
-load("Data_outputs/bbal_birdis_glmm_between_bathy.RData")
-load("Data_outputs/bbal_birdis_glmm_between_chl.RData")
-
-
-model_info <- list(
-  within_sst =    list(model = bbal_birdis_glmm.within_sst, data = pnts_all),
-  within_bathy =  list(model = bbal_birdis_glmm.within_bathy, data = pnts_all),
-  within_chl =    list(model = bbal_birdis_glmm.within_chl, data = pnts_all),
-  between_sst =   list(model = bbal_birdis_glmm.between_sst, data = pnts_all),
-  between_bathy = list(model = bbal_birdis_glmm.between_bathy, data = pnts_all),
-  between_chl =   list(model = bbal_birdis_glmm.between_chl, data = pnts_all)
-)
+env_vars = c("sst", "bathy", "chl")
 
 auc_results <- data.frame(
   model = character(),
   auc = numeric()  )
 
-# Loop through models and compute AUC, output diagnostics
-for (model_name in names(model_info)) {
+for (i in 1:length(env_vars)) {
 
-  this_model <- model_info[[model_name]]$model
-  this_data <- model_info[[model_name]]$data
+  # Get models
+  load(paste0("Data_outputs/bbal_birdis_glmm_between_", env_vars[i], ".RData"))
+  mod_between = get(paste0("bbal_birdis_glmm.between_", env_vars[i]))
+
+  load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars[i], ".RData"))
+  mod_within = get(paste0("bbal_birdis_glmm.within_", env_vars[i]))
+
+  # print("Covariance structure: ")
+  # print(VarCorr(mod_between))
+  # print(VarCorr(mod_within))
+  # 
+  # print("Collinearity: ")
+  # print(performance::check_collinearity(mod_between))
+  # print(performance::check_collinearity(mod_within))
+  # 
+  # print(paste0("DONE. ---------------------------"))
   
-  print(paste0("Next model: ", model_name, " ------------------------------------"))
+  preds.between <- predict(mod_between, type = "response")
+  auc_value.between <- as.numeric(auc(pnts_all$used, preds.between))
   
-  print("Covariance structure: ")
-  print(VarCorr(this_model))
+  preds.within <- predict(mod_within, type = "response")
+  auc_value.within <- as.numeric(auc(pnts_all$used, preds.within))
   
-  print("Collinearity: ")
-  print(performance::check_collinearity(this_model))
+  auc_between <- cbind(auc_value.between, "between")
+  auc_within <- cbind(auc_value.within, "within")
   
-  print(paste0("DONE. ---------------------------"))
+  bbal_birdis_auc_results <- data.frame(rbind(auc_between, auc_within)) %>% 
+                              mutate(env = env_vars[i]) %>%
+                              rename(level = V2, auc = auc_value) %>%
+                              relocate(auc, .after = env)
   
-  preds <- predict(this_model, type = "response")
-  auc_value <- as.numeric(auc(this_data$used, preds))
-  
-  auc_results <- rbind(auc_results, data.frame(model = model_name, auc = auc_value))
 }
 
-auc_results %<>% mutate(species = "BBAL", colony = "birdis") %>% relocate(c(species, colony), .before = model)
-
+bbal_birdis_auc_results %<>% mutate(species = "BBAL", colony = "birdis") %>% relocate(c(species, colony), .before = level)
+save(bbal_birdis_auc_results, file = "Data_outputs/bbal_birdis_auc_habitat_selection.RData")
 
 ```
 
@@ -2701,14 +2961,22 @@ gc()
 
 load("Data_inputs/bbal_birdis_habitat_data.RData")
 
-# Calculate conditional repeatability ------
-
-## Store envronmental variables
 env_vars = c("sst", "bathy", "chl")
 
+# [ 1 ] Calculate conditional repeatability ------
+
+## Decide on simulation number
+n_sim <- 100
+
+## Approximate degrees of freedom for uncertainty estimates:
+df_ID <- length(unique(pnts_all$ID)) - 1
+df_ID_season <- length(unique(pnts_all$ID_season)) - 1
+df_tripID <- length(unique(pnts_all$tripID)) - 1
+
+## Store envronmental variables
 sst_scaled <- unlist(pnts_all$sst_scaled)
 bathy_scaled <- unlist(pnts_all$bathy_scaled)
-chl_scaled <- unlist(pnts_all$chl_scaled)
+chl_scaled <- unlist(pnts_all$chl_scaled_log)
 
 var_map <- list(
   sst = sst_scaled,
@@ -2721,6 +2989,7 @@ cond_res.list <- vector(mode = "list", length = length(env_vars))
 for (i in 1:length(env_vars)) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
+  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
   load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars[i], ".RData"))
@@ -2729,17 +2998,162 @@ for (i in 1:length(env_vars)) {
   mod_within = get(paste0("bbal_birdis_glmm.within_", env_vars[i]))
   mod_between = get(paste0("bbal_birdis_glmm.between_", env_vars[i]))
   
-  # Calculate conditional repeatability parameters
-  
+  ## Get environmental metrics ====
   env_current <- var_map[[env_vars[i]]]
   
-  ## Within ##
+  ## Summarise data 
+  meanX <- mean(env_current)
+  varX <- var(env_current)
+  xrange <- range(env_current)
   
+  # Extract uncertainty in repeatability estimates ====
+  
+  ## ~ Between ~ ----
+  
+  ## Extract fixed effects and their covariance matrix
+  beta_hat <- fixef(mod_between)$cond
+  vcov_beta <- vcov(mod_between)
+  
+  ## Extract variance components (point estimates)
+  vc <- VarCorr(mod_between)$cond
+  var_int <- as.numeric(vc$ID[1,1])         
+  var_slope <- as.numeric(vc$ID.1[1,1])     
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+  var_resid <- (pi^2)/3                     
+  
+  ## Get covariance matrix for intercept/slope random effects
+  Sigma = matrix( c(
+    var_int, 0,
+    0, var_slope),
+    nrow = 2) 
+  
+  
+  # Bootstrap conditional repeatability uncertainty ====
+  set.seed(123)
+  
+  condR_sim <- list()
+  
+  for(n in 1:n_sim){
+    
+    # 1. Sample fixed effects from multivariate normal
+    vcov_mat_numeric <- vcov_beta$cond
+    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
+    
+    # 2. Sample variance components from scaled chi-square approximations:
+    # (This is a rough approximation — bootstrapping is better but slower)
+    
+    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
+    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+    
+    ## Make the covariance matrix
+    Sigma_sim = matrix( c( var_int_sim, 0,
+                           0, var_slope_sim), nrow = 2)
+    
+    # 3. Compute conditional repeatability
+    condR_df <- condR(
+      betaX = beta_sim[habitat_var], 
+      meanX = meanX,
+      Vx = varX,
+      Vr = var_resid,
+      Sigma = Sigma_sim, 
+      Vo = var_tripID_sim,
+      xrange = xrange)$condR
+    
+    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
+    
+  }
+  
+  ## Summarise output
+  condR_all <- bind_rows(condR_sim)
+  
+  condR_uncertainty.between <- condR_all %>%
+    group_by(x) %>%
+    summarise(
+      median = median(condR, na.rm = TRUE),
+      lower = quantile(condR, 0.025, na.rm = TRUE),
+      upper = quantile(condR, 0.975, na.rm = TRUE)
+    ) %>% ungroup() %>%
+    mutate(level = "between")
+  
+  
+  ## ~ Within ~ ----
+  
+  ## Extract fixed effects and their covariance matrix
+  beta_hat <- fixef(mod_within)$cond
+  vcov_beta <- vcov(mod_within)
+  
+  ## Extract variance components (point estimates)
+  vc <- VarCorr(mod_within)$cond
+  var_int <- as.numeric(vc$ID_season[1,1])         
+  var_slope <- as.numeric(vc$ID_season.1[1,1])     
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+  var_resid <- (pi^2)/3                     
+  
+  ## Get covariance matrix for intercept/slope random effects
+  Sigma = matrix( c(
+    var_int, 0,
+    0, var_slope),
+    nrow = 2) 
+  
+  set.seed(123)
+  
+  condR_sim <- list()
+  
+  for(n in 1:n_sim){
+    
+    # 1. Sample fixed effects from multivariate normal
+    vcov_mat_numeric <- vcov_beta$cond
+    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
+    
+    # 2. Sample variance components from scaled chi-square approximations:
+    # (This is a rough approximation — bootstrapping is better but slower)
+    
+    var_int_sim <- var_int * rchisq(1, df = df_ID_season) / df_ID_season
+    var_slope_sim <- var_slope * rchisq(1, df = df_ID_season) / df_ID_season
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+    
+    ## Make the covariance matrix
+    Sigma_sim = matrix( c( var_int_sim, 0,
+                           0, var_slope_sim), nrow = 2)
+    
+    # 3. Compute conditional repeatability
+    condR_df <- condR(
+      betaX = beta_sim[habitat_var], 
+      meanX = meanX,
+      Vx = varX,
+      Vr = var_resid,
+      Sigma = Sigma_sim, 
+      Vo = var_tripID_sim,
+      xrange = xrange)$condR
+    
+    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
+    
+  }
+  
+  ## Summarise output
+  condR_all <- bind_rows(condR_sim)
+  
+  condR_uncertainty.within <- condR_all %>%
+    group_by(x) %>%
+    summarise(
+      median = median(condR, na.rm = TRUE),
+      lower = quantile(condR, 0.025, na.rm = TRUE),
+      upper = quantile(condR, 0.975, na.rm = TRUE)
+    ) %>% ungroup() %>%
+    mutate(level = "within")
+  
+  condR_uncertainty <- rbind(condR_uncertainty.between, condR_uncertainty.within)
+  
+  
+  # Estimate conditional repeatability ====
+  
+  ## ~ Within ~ ----
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
     0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
-    nrow = 2) 
-  
+  nrow = 2) 
+   
   res_within <- condR(
     betaX = fixef(mod_within)$cond[habitat_var],
     meanX =  mean(env_current),
@@ -2755,14 +3169,13 @@ for (i in 1:length(env_vars)) {
                             marginal_R2 = res_within$Rmar,
                             med_rpt = median(res_within$condR$condR),
                             env = env_vars[i],
-                            species = "BBAL",
-                            colony = "Bird Island", 
+                            species = "WAAL",
+                            colony = "Crozet", 
                             level = "within")
   
   rownames(res_within.summary) <- NULL
    
-  ## Between ##
-  
+  ## ~ Between ~ ----
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_between)$cond$ID), 0,
     0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
@@ -2775,15 +3188,16 @@ for (i in 1:length(env_vars)) {
     Vr = (pi^2)/3,
     Sigma = my_sigma,    
     Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
-    xrange = range(env_current)  )
+    xrange = range(env_current)
+  )
   
   res_between.summary <- data.frame(var_between = res_between$Vi,
                             R2 = res_between$R2s, 
                             marginal_R2 = res_between$Rmar,
                             med_rpt = median(res_between$condR$condR),
                             env = env_vars[i],
-                            species = "BBAL",
-                            colony = "Bird Island", 
+                            species = "WAAL",
+                            colony = "Crozet", 
                             level = "Between")
   
   rownames(res_between.summary) <- NULL
@@ -2794,6 +3208,8 @@ for (i in 1:length(env_vars)) {
   cond_res.list[[i]] <- res.summary
   
   condR_plot <- ggplot() +
+    geom_ribbon(data = condR_uncertainty %>% filter(level == "between"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = "#f3a20c", alpha = 0.4) +
+    geom_ribbon(data = condR_uncertainty %>% filter(level == "within"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = "#D81B60", alpha = 0.4) +
     geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = "#FFC107", size = 1) +
     geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = "#D81B60", size = 1) +
     geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
@@ -2813,13 +3229,15 @@ for (i in 1:length(env_vars)) {
 condR_results <- do.call("rbind", cond_res.list)
 save(condR_results, file = "Data_outputs/bbal_birdis_condR_results.RData")
 
-# Plot individual slopes ----
+
+# [ 2 ] Plot individual slopes ----
 
 rnd_effs.list <- list()
 
 for (i in 1:length(env_vars)) {
 
   habitat_var = paste0(env_vars[i], "_scaled")
+  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
   load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars[i], ".RData"))
@@ -2877,11 +3295,11 @@ for (i in 1:length(env_vars)) {
 rnd_effs.out <- do.call("rbind", rnd_effs.list)
 save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
 
-# Make the plot ----
+# # [ 3 ] Final plot ----
 png("Figures/bbal_birdis_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + labs(x = "Scaled bathymetry (m below sea level)"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
-          chl_pred_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
+          chl_pred_plot + labs(x = expression("Scaled and logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
           bathy_condR_plot + labs(x = "Scaled bathymetry (m below sea level)"),
           sst_condR_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
           chl_condR_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")"))+ theme(axis.title.y = element_blank()),
@@ -2921,7 +3339,7 @@ For Kerguelen especially, birds' preference for shelf zones makes the bathymetry
 
 ```{r bbal_ker_process_data, eval = FALSE}
 
-load("Data_inputs/bbal_kerguelen_sst-bathy-chla_data_population_level.RData")
+load("Data_inputs/bbal_ker_sst-bathy-chla_data_population_level.RData")
 
 ## Remove NAs and set distance to km; remove birds with too few data points
 pnts_all %<>% 
@@ -2969,7 +3387,8 @@ pnts_all %<>%
                          as.numeric(year(date_hourly)),
                          as.numeric(year(date_hourly)) + 1 ),
          sst_scaled2 = sst_scaled^2,
-                     bathy_scaled2 = bathy_scaled^2)
+         bathy_scaled2 = bathy_scaled^2,
+         chl_scaled_log = scale(log(chlA + 0.01)))
 
 ## Add binomial bathymetry variable
 pnts_all %<>%
@@ -2995,15 +3414,15 @@ pnts_all$dist_shelf_bin <- factor(pnts_all$dist_shelf_bin, levels = c("on_shelf"
 save(pnts_all, file = "Data_inputs/bbal_ker_habitat_data.RData")
 
 
-pnts_subset <- pnts_all[sample(nrow(pnts_all), 20000),]
-
-ggplot() +
-  geom_histogram(data = pnts_subset, aes(x = bathy, fill = dist_shelf_bin)) +
-  scale_fill_manual(values = c("lightblue", "blue", "darkblue")) +
-  labs(x = "Bathymetry (m below sea level)") +
-  theme_bw() +
-  theme(legend.position = c(0.1, 0.85),
-        legend.background = element_blank())
+# pnts_subset <- pnts_all[sample(nrow(pnts_all), 20000),]
+# 
+# ggplot() +
+#   geom_histogram(data = pnts_subset, aes(x = bathy, fill = dist_shelf_bin)) +
+#   scale_fill_manual(values = c("lightblue", "blue", "darkblue")) +
+#   labs(x = "Bathymetry (m below sea level)") +
+#   theme_bw() +
+#   theme(legend.position = c(0.1, 0.85),
+#         legend.background = element_blank())
 
 ```
 
@@ -3165,6 +3584,9 @@ kable(var.table, format = "html",
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
+## Try dropping individuals with less than a day of data
+pnts_all %<>% group_by(ID) %>% mutate(n_recs = n_distinct(date_hourly)) %>% filter(n_recs > 24) %>% select(-n_recs) %>% ungroup()
+
 # Between season #
 
 bbal_ker_glmm.between_sst <- glmmTMB(
@@ -3177,7 +3599,6 @@ bbal_ker_glmm.between_sst <- glmmTMB(
 save(bbal_ker_glmm.between_sst, file = "Data_outputs/bbal_ker_glmm_between_sst.RData")
 rm(bbal_ker_glmm.between_sst); gc()
 
-s
 bbal_ker_glmm.between_bathy <- glmmTMB(
   used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
          (1 | ID) + (0 + dist_shelf_bin | ID) + (1 | tripID),
@@ -3203,52 +3624,35 @@ rm(bbal_ker_glmm.between_chl); gc()
 
 ```{r bbal_ker_diagnostics, eval = FALSE}
 
-load("Data_outputs/bbal_ker_glmm_within_sst.RData")
-load("Data_outputs/bbal_ker_glmm_within_bathy.RData")
-load("Data_outputs/bbal_ker_glmm_within_chl.RData")
-
-load("Data_outputs/bbal_ker_glmm_between_sst.RData")
-load("Data_outputs/bbal_ker_glmm_between_bathy.RData")
-load("Data_outputs/bbal_ker_glmm_between_chl.RData")
-
-
-model_info <- list(
-  within_sst =    list(model = bbal_ker_glmm.within_sst, data = pnts_all),
-  within_bathy =  list(model = bbal_ker_glmm.within_bathy, data = pnts_all),
-  within_chl =    list(model = bbal_ker_glmm.within_chl, data = pnts_all),
-  between_sst =   list(model = bbal_ker_glmm.between_sst, data = pnts_all),
-  between_bathy = list(model = bbal_ker_glmm.between_bathy, data = pnts_all),
-  between_chl =   list(model = bbal_ker_glmm.between_chl, data = pnts_all)
-)
+env_vars = c("sst", "bathy", "chl")
 
 auc_results <- data.frame(
   model = character(),
   auc = numeric()  )
 
-# Loop through models and compute AUC, output diagnostics
-for (model_name in names(model_info)) {
+for (i in 1:length(env_vars)) {
 
-  this_model <- model_info[[model_name]]$model
-  this_data <- model_info[[model_name]]$data
+  # Get models
+  load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars[i], ".RData"))
+  mod_between = get(paste0("bbal_ker_glmm.between_", env_vars[i]))
+
+  # print("Covariance structure: ")
+  # print(VarCorr(mod_between))
+  # 
+  # print("Collinearity: ")
+  # print(performance::check_collinearity(mod_between))
+  # 
+  # print(paste0("DONE. ---------------------------"))
   
-  print(paste0("Next model: ", model_name, " ------------------------------------"))
+  preds <- predict(mod_between, type = "response")
+  auc_value <- as.numeric(auc(pnts_all$used, preds))
   
-  print("Covariance structure: ")
-  print(VarCorr(this_model))
+  bbal_ker_auc_results <- rbind(auc_results, data.frame(level = "between", env = env_vars[i], auc = auc_value))
   
-  print("Collinearity: ")
-  print(performance::check_collinearity(this_model))
-  
-  print(paste0("DONE. ---------------------------"))
-  
-  preds <- predict(this_model, type = "response")
-  auc_value <- as.numeric(auc(this_data$used, preds))
-  
-  auc_results <- rbind(auc_results, data.frame(model = model_name, auc = auc_value))
 }
 
-auc_results %<>% mutate(species = "BBAL", colony = "kerguelen") %>% relocate(c(species, colony), .before = model)
-
+bbal_ker_auc_results %<>% mutate(species = "BBAL", colony = "kerguelen") %>% relocate(c(species, colony), .before = level)
+save(bbal_ker_auc_results, file = "Data_outputs/bbal_ker_auc_habitat_selection.RData")
 
 ```
 
@@ -3296,22 +3700,32 @@ Conditional repeatability essential asks: 'How does repeatability change depend 
 
 One sticking point with conditional repeatability is that it only works with linear responses (though I am likely to drop all my polynomial responses going forward).
 
+'We note that the exponential increase in conditional repeatability is mathematically expected given the structure of the model and the form of the conditional repeatability equation. However, the upper end of the chlorophyll gradient is sparsely sampled and may be influenced by a small number of individuals. We therefore restrict interpretation to the central 90% of the data range and caution against overinterpreting patterns at the extreme tail.'
+
 
 ```{r bbal_ker_cond_repeatability}
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
+# [ 1A ] Calculate conditional repeatability - Chl & SST ------
+
+## Decide on simulation number
+n_sim <- 100
+
+## Approximate degrees of freedom for uncertainty estimates:
+df_ID <- length(unique(pnts_all$ID)) - 1
+df_tripID <- length(unique(pnts_all$tripID)) - 1
+
 ## Store envronmental variables
 env_vars = c("sst", "chl", "bathy")
 
 sst_scaled <- unlist(pnts_all$sst_scaled)
+bathy_scaled <- unlist(pnts_all$bathy_scaled)
 chl_scaled <- unlist(pnts_all$chl_scaled)
 
 var_map <- list(
   sst = sst_scaled,
   chl = chl_scaled )
-
-# Calculate conditional repeatability ------
 
 cond_res.list <- vector(mode = "list", length = length(env_vars))
 
@@ -3324,11 +3738,89 @@ for (i in 1:2) {
 
   mod_between = get(paste0("bbal_ker_glmm.between_", env_vars[i]))
   
-  # Calculate conditional repeatability parameters
+  # Get colour
+  line_colour <- if (grepl("chl", habitat_var)) {
+  chl_col  } else if (grepl("sst", habitat_var)) {  sst_col } 
+  
+  ## Get environmental metrics ====
   
   env_current <- var_map[[env_vars[i]]]
   
-  ## Between ##
+  ## Summarise data 
+  meanX <- mean(env_current)
+  varX <- var(env_current)
+  xrange <- range(env_current)
+
+  # Extract uncertainty in repeatability estimates ====
+  
+  ## Extract fixed effects and their covariance matrix
+  beta_hat <- fixef(mod_between)$cond
+  vcov_beta <- vcov(mod_between)
+  
+  ## Extract variance components (point estimates)
+  vc <- VarCorr(mod_between)$cond
+  var_int <- as.numeric(vc$ID[1,1])         
+  var_slope <- as.numeric(vc$ID.1[1,1])     
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+  var_resid <- (pi^2)/3                     
+  
+  ## Get covariance matrix for intercept/slope random effects
+  Sigma = matrix( c(
+    var_int, 0,
+    0, var_slope),
+  nrow = 2) 
+  
+
+  # Bootstrap conditional repeatability uncertainty ====
+  set.seed(123)
+  
+  n_sim = 100
+  condR_sim <- list()
+  
+  for(n in 1:n_sim){
+    
+    # 1. Sample fixed effects from multivariate normal
+    vcov_mat_numeric <- vcov_beta$cond
+    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
+    
+    # 2. Sample variance components from scaled chi-square approximations:
+    # (This is a rough approximation — bootstrapping is better but slower)
+    
+    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
+    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+    
+    ## Make the covariance matrix
+    Sigma_sim = matrix( c( var_int_sim, 0,
+                           0, var_slope_sim), nrow = 2)
+    
+    # 3. Compute conditional repeatability
+    condR_df <- condR(
+                  betaX = beta_sim[habitat_var], 
+                  meanX = meanX,
+                  Vx = varX,
+                  Vr = var_resid,
+                  Sigma = Sigma_sim, 
+                  Vo = var_tripID_sim,
+                  xrange = xrange)$condR
+  
+    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
+  
+  }
+  
+  ## Summarise output
+  condR_all <- bind_rows(condR_sim)
+
+  condR_uncertainty <- condR_all %>%
+    group_by(x) %>%
+    summarise(
+      median = median(condR, na.rm = TRUE),
+      lower = quantile(condR, 0.025, na.rm = TRUE),
+      upper = quantile(condR, 0.975, na.rm = TRUE)
+    ) %>% ungroup()
+    
+  
+  # Estimate conditional repeatability ====
   my_sigma = matrix( c(
     as.numeric(VarCorr(mod_between)$cond$ID), 0,
     0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
@@ -3358,17 +3850,22 @@ for (i in 1:2) {
     relocate(c(species, colony, level, env), .before = var_between)
   
   cond_res.list[[i]] <- res.summary
-  
+
+  # Plot conditional repeatability ==== 
+  rug_data <- data.frame(env_current = sample(env_current, size = 1000))
+
   condR_plot <- ggplot() +
     geom_line(data = res_between$condR, aes(x = x, y = condR/100), col = "#FFC107", size = 1) +
+    geom_ribbon(data = condR_uncertainty, aes(x = x, ymin = lower/100, ymax = upper/100), fill = "#f3a20c", alpha = 0.4) +
     geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = "#f3a20c") +
+    geom_rug(data = data.frame(rug_data), aes(x = env_current), alpha = 0.3, sides = "t", col = line_colour) +
     labs(y = "Conditional repeatability") +
-    expand_limits(y = 0) +
+    expand_limits(y = c(0, 1)) +
     theme_bw() 
 
   assign(paste0(env_vars[i], "_condR_plot"), condR_plot)
   
-  rm(mod_within, mod_between)
+  rm(mod_between)
   rm(list = paste0("bbal_ker_glmm.between_", env_vars[i]))
   gc()
   
@@ -3377,8 +3874,9 @@ for (i in 1:2) {
 condR_results <- do.call("rbind", cond_res.list)
 
 
-## Bathymetry only ----
+# [ 1B ] Calculate conditional repeatability - Bathymetry ------
 
+# Calculate repeatability ====
 load("Data_outputs/bbal_ker_glmm_between_bathy.RData")
 mod_between = get("bbal_ker_glmm.between_bathy")
   
@@ -3420,20 +3918,63 @@ condR_results <- rbind(condR_results, R_cond.df)
 
 save(condR_results, file = "Data_outputs/bbal_ker_condR_results.RData")
 
-## Make the plot
 
+# Boostrap uncertainty ====
+
+# Storage matrix for simulated repeatabilities (rows = simulations, cols = slope levels)
+rpt_sim <- matrix(NA, nrow = n_sim, ncol = length(V_slope))
+colnames(rpt_sim) <- names(V_slope)
+
+for(i in seq_len(n_sim)){
+  # Simulate variance components from scaled chi-square
+  var_int_sim <- V_ID_intercept * rchisq(1, df_ID) / df_ID
+  var_tripID_sim <- V_tripID * rchisq(1, df_tripID) / df_tripID
+  
+  var_slope_sim <- sapply(V_slope, function(v) v * rchisq(1, df_ID) / df_ID)
+
+  # Calculate conditional repeatability for each slope level
+  for(j in seq_along(var_slope_sim)){
+    V_random_sim <- var_int_sim + var_slope_sim[j] + var_tripID_sim
+    V_total_sim <- V_random_sim + V_residual
+    rpt_sim[i, j] <- V_random_sim / V_total_sim
+  }
+}
+
+# Summarize simulation results
+rpt_summary <- apply(rpt_sim, 2, function(x) {
+  c(
+    median = median(x, na.rm=TRUE),
+    lower = quantile(x, 0.025, na.rm=TRUE),
+    upper = quantile(x, 0.975, na.rm=TRUE)
+  )
+}) %>% t() %>% as.data.frame()
+
+rpt_summary$env <- rownames(rpt_summary)
+rpt_summary %<>%
+  rename(lower = `lower.2.5%`, upper = `upper.97.5%`) %>%
+  select(env, median, lower, upper) %>%
+  mutate(env = as.factor(env))
+
+## Merge them with the main dataframe for plotting 
+R_cond.df %<>% left_join(rpt_summary, by = "env")
+
+# Make the plot ====
 bathy_labels <- c("Off shelf", "Near shelf break", "On shelf")
 
 condR_plot <- ggplot() +
     geom_point(data = R_cond.df, aes(x= env, y = med_rpt), col = "#FFC107", size = 3) +
+    geom_errorbar(data = R_cond.df, aes(x = env, ymin = lower, ymax = upper), width = 0.1, colour = "#FFC107") +
     labs(y = "Conditional repeatability") +
     scale_x_discrete(labels = bathy_labels) +
-    expand_limits(y = 0) +
+    expand_limits(y = c(0, 1)) +
     theme_bw() 
 
 assign("bathy_condR_plot", condR_plot)
 
-# Plot individual slopes ---- 
+
+
+
+# [ 2 ] Plot individual slopes ---- 
 
 rnd_effs.list <- list()
 
@@ -3530,11 +4071,8 @@ assign("bathy_pred_plot", pred_plot)
 save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
 
 
-
-
-
 # Make the plot ----
-png("Figures/bbal_ker_habitat_conditional_repeatability2.png", width = 14, height = 9, units = "in", res = 600)
+png("Figures/bbal_ker_habitat_conditional_repeatability.png", width = 14, height = 9, units = "in", res = 600)
 ggarrange(bathy_pred_plot + ylim(0, 1) + labs(x = "Proximity to shelf"), 
           sst_pred_plot + labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank()), 
           chl_pred_plot + labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank()),
@@ -3549,29 +4087,6 @@ dev.off()
 
 ```
 
-#### Extract individual estimates
-
-```{r bbal_ker_extract_ind_estimates}
-
-load("Data_outputs/bbal_birdis_habitat_used_ranef.RData")
-ranefs.df2 <- ranefs.df %>% 
-  select(c(season_type, env, season, ring, estimate, intercept)) %>%
-  rename(used_estimate = estimate,
-         used_intercept = intercept) %>%
-  mutate(env = case_when( env == "SST" ~ "sst",
-                          env == "chlA" ~ "chl",
-                          env == "bathy" ~ "bathy"))
-
-rnd_effs.out2 <- rnd_effs.out %>%
-  select(c(season_type, env, season, ring, intercept, slope)) %>%
-  rename(selection_intercept = intercept,
-         selection_slope = slope)
-
-ind_estimates <- merge(ranefs.df2, rnd_effs.out2, by = c("ring", "season", "season_type", "env"), all = T)
-write.csv(ind_estimates, file = "Data_outputs/bbal_birdis_habitat_individual_estimates.csv", row.names = FALSE)
-
-
-```
 
 # Final results
 
@@ -3581,8 +4096,23 @@ For the manuscript, we want to show:
 -   Individual curves for each habitat type by species
 -   Repeatability summaries for each species
 
+### Combine AUC values
+
+```{r auc_values}
+
+load("Data_outputs/bbal_birdis_auc_habitat_selection.RData")
+load("Data_outputs/bbal_ker_auc_habitat_selection.RData")
+load("Data_outputs/waal_birdis_auc_habitat_selection.RData")
+load("Data_outputs/waal_cro_auc_habitat_selection.RData")
+
+auc_results.all <- rbind(bbal_birdis_auc_results, bbal_ker_auc_results,
+                         waal_birdis_auc_results, waal_cro_auc_results)
+
+```
+
 
 ## Figure SX - Plot used habitat
+
 
 ```{r plot_used}
 
