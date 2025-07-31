@@ -229,7 +229,7 @@ rep_data %<>%
 rep_data %<>% 
  group_by(ring_season) %>%
  mutate(n_trips = n_distinct(start_date)) %>%
- filter(n_trips >= n_reps[n]) %>%
+ filter(n_trips >= 3) %>%
  select(-n_trips) %>%
  ungroup()
 
