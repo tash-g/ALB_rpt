@@ -346,8 +346,6 @@ calc_repeatability <- function(focal_var, additional_var, additional_var2, resid
 
 
 
-
-
 calc_rpt_brms <- function(brm_model, data, x_mean) {
   # Extract posterior draws as dataframe
   posterior <- as_draws_df(brm_model)
@@ -368,16 +366,19 @@ calc_rpt_brms <- function(brm_model, data, x_mean) {
     (x_mean^2) * var_slope +
     2 * x_mean * cor_is * sd_ring_season * sd_slope
   
+  ## Within-season variance includes ID variance
+  var_ID_within_season <- var_ring + var_ringSeason_x
+  
   # Total variance
   total_var <- var_ringSeason_x + var_ring + var_season + var_resid
   
   # Repeatabilities
-  rpt_within <- var_ringSeason_x / total_var
+  rpt_within <- var_ID_within_season / total_var
   rpt_across <- var_ring / total_var
   
   # Combine into tibble/data.frame with all posterior draws
   result <- tibble(
-    var_ringSeason_x = var_ringSeason_x,
+    var_ringSeason_x = var_ID_within_season,
     var_ring = var_ring,
     var_season = var_season,
     var_resid = var_resid,
@@ -419,9 +420,6 @@ calc_rpt_grouped <- function(mydata, myformula, mygroup, group_levels, myspecies
   return(rpt_total)
   
 }
-
-
-
 
 # extract_rpt <- function(mymodel) {
 #   
@@ -654,7 +652,7 @@ bearing_from_col <- function(trip, col_lon, col_lat) {
 
 
 # Compute differences and remove any that occur in different breeding phases
-calculate_bearing_diffs <- function(df, bearing_col_name, comparison_type = c("within", "between"), output_col_name) {
+calculate_bearing_diffs <- function(df, bearing_col_name, comparison_type = c("within", "between"), output_col_name, trip_starts) {
   
   comparison_type <- match.arg(comparison_type)
   bearing_col_sym <- rlang::sym(bearing_col_name)
@@ -691,6 +689,13 @@ calculate_bearing_diffs <- function(df, bearing_col_name, comparison_type = c("w
       select(ring_1, tripID_1, season_1, ring_2, tripID_2, season_2, 
              !!output_col_name, comp_ind, comp_season)
     
+    out %<>%
+      left_join(trip_starts, by = c("ring_1" = "ring", "tripID_1" = "tripID")) %>%
+      rename(start_time_1 = start_time) %>%
+      left_join(trip_starts, by = c("ring_2" = "ring", "tripID_2" = "tripID")) %>%
+      rename(start_time_2 = start_time) %>%
+      mutate(inter_obs_dist = abs(as.numeric(difftime(start_time_1, start_time_2, units = "days"))))
+    
   } else if (comparison_type == "between") {
     
     df1 <- df %>%
@@ -715,6 +720,14 @@ calculate_bearing_diffs <- function(df, bearing_col_name, comparison_type = c("w
              ring_2, boutID_2, season_2,
              !!output_col_name, comp_ind, comp_season) %>%
       rename(tripID_1 = boutID_1, tripID_2 = boutID_2)
+    
+    out %<>%
+      left_join(trip_starts, by = c("ring_1" = "ring", "tripID_1" = "tripID")) %>%
+      rename(start_time_1 = start_time) %>%
+      left_join(trip_starts, by = c("ring_2" = "ring", "tripID_2" = "tripID")) %>%
+      rename(start_time_2 = start_time) %>%
+      mutate(inter_obs_dist = abs(as.numeric(difftime(start_time_1, start_time_2, units = "days"))))
+    
   }
   
   return(out)
