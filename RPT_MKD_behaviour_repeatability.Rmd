@@ -674,7 +674,7 @@ for (i in 1:length(cov)) {
   print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
   
   cov_value <- paste0("log(", cov[i], ")")
-  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring) + (1 | ring_season) + (1 | gr(animal, cov = A))")
+  formula <- paste0(cov_value, " ~ 1 + phase + (1 | season) + (1 | ring) + (1 | ring_season) + (1 | gr(animal, cov = A))")
   
   mod_brm <- brm(
     formula = formula,
@@ -864,7 +864,7 @@ for (i in 1:length(cov)) {
   print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
   
   cov_value <- paste0("log(", cov[i], ")")
-  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring) + (1 | ring_season) + (1 | gr(animal, cov = A))")
+  formula <- paste0(cov_value, " ~ 1 + age + (1 | season) + (1 | ring) + (1 | ring_season) + (1 | gr(animal, cov = A))")
   
   mod_brm <- brm(
     formula = formula,
@@ -1055,7 +1055,7 @@ for (i in 1:length(cov)) {
   print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
   
   cov_value <- paste0("log(", cov[i], ")")
-  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring) + (1 | gr(animal, cov = A))")
+  formula <- paste0(cov_value, " ~ 1 + phase + (1 | season) + (1 | ring) + (1 | gr(animal, cov = A))")
   
   mod_brm <- brm(
     formula = formula,
@@ -1129,7 +1129,7 @@ ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
 
 
 
-#### Figure X: Heritability estimates
+#### Plot heritability estimates
 
 ```{r plot_heritability}
 
