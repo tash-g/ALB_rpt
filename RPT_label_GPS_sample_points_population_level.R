@@ -357,7 +357,7 @@ for (i in 1:length(spec_col)) {
              year = year(date_hourly),
              used = 0,
              phase = gps_ind$phase[1],
-             sex = gps_ind$phase[1]) %>% 
+             sex = gps_ind$sex[1]) %>% 
       relocate(ring, season, year, tripID, date_hourly, longitude, latitude, used) %>%
       select(-row_id)
     

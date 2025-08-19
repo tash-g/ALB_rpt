@@ -252,14 +252,14 @@ for (n in 1:length(spec_col)) {
 
 # DOWNLOAD ---------------------------------------------------------------------
 
-spec_col <- "bba_birdis"  # "bba_birdis" "bbal_ker" "waal_birdis", "waal_cro"
+spec_col <- "bbal_birdis"  # "bba_birdis" "bbal_ker" "waal_birdis", "waal_cro"
 
 load(paste0("Data_outputs/", spec_col, "_available_pnts_population_level.RData"))
 
 # Set parameters
-years = unique(year(pnts_all$datetime))
-months = unique(month(pnts_all$datetime))
-days = unique(day(pnts_all$datetime))
+years = unique(year(pnts_all$date_hourly))
+months = unique(month(pnts_all$date_hourly))
+days = unique(day(pnts_all$date_hourly))
 S = min(pnts_all$Latitude, na.rm = T)
 N = max(pnts_all$Latitude, na.rm = T)
 W = min(pnts_all$Longitude, na.rm = T)
@@ -357,7 +357,7 @@ for (i in 1:length(seasons)) {
 # ______________________________ ####
 # VISUALISE --------------------------------------------------------------------
 
-spec_col <- "waal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
+spec_col <- "waal_cro"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
 spec_col2 <- "waal_birdis"  # "bba_birdis" "bba_kerguelen" "waal_birdis", "waal_cro"
 
 load(paste0("Data_inputs/", spec_col, "_sst-bathy-chla_data_population_level.RData"))
