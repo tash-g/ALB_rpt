@@ -1,0 +1,172 @@
+---
+title: "Heritability results"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
+
+# Define & load the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "ggridges") 
+
+# Install packages not yet installed - change lib to library path
+# installed_packages <- packages %in% rownames(installed.packages())
+# 
+#  if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+## Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+
+## Make sure using dplyr select
+select <- dplyr::select
+
+# Set colours
+col_effort <- "#1b9e77"
+col_bearing <- "#aaf0db"
+col_slope <- "#0d4e3a"
+
+
+```
+
+
+```{r combine_posteriors}
+
+# Foraging effort ====
+
+bbal_birdis.effort <- loadRData("Data_outputs/bbal_birdis_behaviour_heritability_posteriors.RData") %>%
+  mutate(spec_col = "BBAL Bird Island")
+waal_birdis.effort <- loadRData("Data_outputs/waal_birdis_behaviour_heritability_posteriors.RData") %>%
+  mutate(spec_col = "WAAL Bird Island")
+waal_cro.effort <- loadRData("Data_outputs/waal_cro_behaviour_heritability_posteriors.RData") %>%
+  mutate(spec_col = "WAAL Crozet")
+
+posteriors_effort <- rbind(bbal_birdis.effort, waal_birdis.effort, waal_cro.effort)
+
+posteriors_effort %<>%
+  group_by(spec_col, behaviour) %>%
+  mutate(mean_h2 = mean(h2_post, na.rm = TRUE)) %>%
+  arrange(behaviour, mean_h2) %>%
+  ungroup()
+
+## Recode behaviour
+posteriors_effort %<>%
+  mutate(behaviour = recode(behaviour,
+                            "duration.hrs" = "Trip duration",
+                            "transitions" = "Landings",
+                            "transit_time.pct" = "Flight time",
+                            "rest_time.pct" = "Rest time",
+                            "transit_to_rest.ratio" = "Flight:Rest ratio"),
+         behaviour = factor(behaviour, levels = rev(c("Trip duration", "Landings", "Rest time", "Flight time", "Flight:Rest ratio"))))
+
+# Foraging bearings ====
+
+posteriors_bearings <- loadRData("all_posteriors_spatial_heritability.RData")
+
+
+# Habitat slopes =====
+
+bbal_birdis.slopes <- loadRData("Data_outputs/bbal_birdis_habitat_pref_heritability_posteriors.RData") %>% mutate(spec_col = "BBAL Bird Island")
+waal_birdis.slopes <- loadRData("Data_outputs/waal_birdis_habitat_pref_heritability_posteriors.RData") %>% mutate(spec_col = "WAAL Bird Island")
+waal_cro.slopes <- loadRData("Data_outputs/waal_cro_habitat_pref_heritability_posteriors.RData") %>% mutate(spec_col = "WAAL Crozet")
+
+posteriors_slopes <- rbind(bbal_birdis.slopes, waal_birdis.slopes, waal_cro.slopes)
+
+
+# Bind the behaviours into one plot ====
+
+posteriors_effort %<>%
+  select(c(spec_col, h2_post, behaviour)) %>%
+  rename(h2 = h2_post) %>%
+  mutate(group = "effort")
+
+posteriors_bearings %<>%
+  select(c(spec_col, Intercept)) %>%
+  rename(h2 = Intercept) %>%
+  mutate(behaviour = "Foraging bearing",
+         group = "bearings")
+
+posteriors_slopes %<>%
+  rename(behaviour = env) %>%
+  mutate(behaviour = paste0(behaviour, " preference"),
+         group = "slopes") %>%
+  relocate(c(spec_col, h2), .before = behaviour) %>%
+  mutate(behaviour = factor(
+    behaviour,
+    levels = rev(c("Bathymetry preference", "Chlorophyll preference", "SST preference"))))
+
+posteriors_all <- rbind(posteriors_effort, posteriors_bearings, posteriors_slopes) 
+
+# Change ordering for plot/table
+posteriors_all %<>%
+   mutate(behaviour = factor(behaviour, 
+                             levels = c("Trip duration", "Landings", "Rest time", "Flight time", "Flight:Rest ratio",
+                                        "Foraging bearing",
+                                        "Bathymetry preference", "Chlorophyll preference", "SST preference"))) %>%
+   arrange(spec_col, behaviour)
+
+posteriors_all$behaviour <- factor(
+  posteriors_all$behaviour,
+  levels = rev(levels(posteriors_all$behaviour)))
+
+```
+
+#### Figure 6: Heritability plot
+
+```{r plot_heritability}
+
+heritability_plot <- ggplot(posteriors_all, aes(x = h2, y = behaviour, fill = group)) +
+  geom_density_ridges(alpha = 0.6, scale = 1) +
+  scale_fill_manual(values = c(
+    "effort" = col_effort,
+    "bearings" = col_bearing,
+    "slopes" = col_slope)) +
+  facet_wrap(~spec_col, nrow = 1, ncol = 3, scales = "free_x") +
+  labs(x = "Posterior distribution for heritability (h²)", y = "") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+png(file = "Figures/MS Figures/FIG6_heritability.png", width = 15, height = 8, units = "in", res = 300)
+heritability_plot
+dev.off()
+
+```
+
+#### Table 6: Heritability table
+
+```{r table_heritability}
+
+heritability_table <- posteriors_all %>%
+  group_by(spec_col, behaviour) %>%
+  summarise(
+    median = median(h2),
+    lower = quantile(h2, 0.025),
+    upper = quantile(h2, 0.975)) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+  mutate("Estimated h2" = paste0(median, " [", lower, ", ", upper, "]")) %>%
+  select(c(spec_col, behaviour, 'Estimated h2')) %>%
+  arrange(spec_col, behaviour) %>%
+  separate(spec_col, into = c("Species", "Colony"), sep = " ", extra = "merge") %>%
+  rename(Behaviour = behaviour)
+ 
+heritability_table$Behaviour <- factor(
+  heritability_table$Behaviour,
+  levels = rev(levels(heritability_table$Behaviour)))
+
+heritability_table %<>% arrange(Species, Colony, Behaviour)
+
+kable(heritability_table, format = "html") %>% 
+  collapse_rows(columns = c(1, 2)) %>%
+  kable_classic(font_size = 12)
+
+
+```

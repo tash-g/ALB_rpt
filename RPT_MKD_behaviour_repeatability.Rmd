@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB", "ggridges", "brms", "MCMCglmm", "igraph")
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB", "ggridges", "brms", "MCMCglmm", "igraph", "pheatmap", "MasterBayes")
 
 # Load packages
 invisible(lapply(packages, library, character.only = TRUE))
@@ -34,8 +34,8 @@ options(dplyr.summarise.inform = FALSE)
 select <- dplyr::select
 
 # Set colours
-col_within <- "#91c5f2"
-col_between <- "#0b3860"
+col_between <- "#91c5f2"
+col_within <- "#0b3860"
 
 # Load & process data ==========================================================
 
@@ -380,6 +380,8 @@ save(rpt_output.full, file = "Data_outputs/behavioural_repeatability_results.RDa
 
 ### Repeatability results
 
+#### Table 1: Repeatability parameters
+
 ```{r repeatability_table}
 
 load("Data_outputs/behavioural_repeatability_results.RData")
@@ -448,7 +450,7 @@ kable(rpt_summary, format = "html",
 
 ```
 
-#### Figure X: Repeatability by species & colony
+#### Figure 1: Repeatability by species & colony
 
 ```{r repeatability_figure, fig.cap = "Figure 1. Summary of repeatability values for each species.", fig.topcaption = TRUE}
 
@@ -475,7 +477,7 @@ rpt_long <- rpt_output.full %>%
 
 rptplot <- ggplot(rpt_long, aes(x = rpt, y = behaviour, fill = repeatability_type)) +
   geom_density_ridges(alpha = 0.6, scale = 1) +
-  facet_wrap(~spec_col, nrow = 2, scales = "free") +
+  facet_wrap(~spec_col, nrow = 2, scales = "free_x") +
    scale_fill_manual(values = c(col_between, col_within),
                       labels = c("Between-season", "Within-season")) +
   labs(x = "Posterior distribution for repeatability", y = "") +
@@ -483,7 +485,7 @@ rptplot <- ggplot(rpt_long, aes(x = rpt, y = behaviour, fill = repeatability_typ
   theme(legend.position = "none")
 
 
-png(filename = "Figures/MS Figures/FIGx_behaviour_repeatability.png", width = 12, height = 10, units = "in", res = 900)
+png(filename = "Figures/MS Figures/FIG1_behaviour_repeatability.png", width = 10, height = 10, units = "in", res = 900)
 rptplot
 dev.off()
 
@@ -553,6 +555,199 @@ dev.off()
 
 ### Testing for heritability
 
+### * Black-browed albatrosses
+
+#### * Bird Island
+
+```{r bbal_birdis_behaviour_heritability }
+
+# (1) Load and subsample the data  ----
+load("Data_inputs/behavioural_repeatability_data.RData")
+
+# Remove zero values
+rep_data %<>% filter(rowSums(select(., transitions, transit_time.pct, transit_to_rest.ratio) == 0) == 0)
+rep_data %<>% filter(species == "bba" & colony == "birdis")
+
+pedigree.df <- read.csv("Data_inputs/bbal_birdis_pedigree.csv")
+pedigree.df %<>% dplyr::select(-Year)
+
+# One sire encoded as '0'
+pedigree.df$sire[pedigree.df$sire == "0"] <- NA
+
+# (2) Check the pedigree  ----
+
+## Are the ID in rep_data the same as id in pedigree.df?
+pedigree.df$id <- as.character(pedigree.df$id)
+rep_data$ring <- as.character(rep_data$ring)
+
+model_ids <- unique(rep_data$ring)
+pedigree_ids <- pedigree.df$id
+
+### IDs in model AND pedigree
+ids_in_both <- intersect(model_ids, pedigree_ids)
+
+### IDs in model NOT in pedigree
+ids_missing_from_pedigree <- setdiff(model_ids, pedigree_ids)
+
+
+# (3) Subset the pedigree to include all ancestors  ----
+
+## Check formatting
+pedigree.df$id <- as.character(pedigree.df$id)
+pedigree.df$dam <- as.character(pedigree.df$dam)
+pedigree.df$sire <- as.character(pedigree.df$sire)
+rep_data$ring <- as.character(rep_data$ring)
+
+model_ids <- unique(rep_data$ring)
+ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
+length(ped_ids_needed)
+
+## Subset the pedigree
+pedigree.pruned <- pedigree.df[pedigree.df$id %in% ped_ids_needed, ]
+
+## Check for missing IDs - NONE MISSING
+setdiff(model_ids, pedigree.pruned$id) 
+
+# Fix birds that are recorded as both dams and sires
+intersect(pedigree.pruned$sire[!is.na(pedigree.pruned$sire)], pedigree.pruned$dam[!is.na(pedigree.pruned$dam)])
+
+na.omit(pedigree.pruned[pedigree.pruned$sire == "1318880" | pedigree.pruned$dam == "1318880", ])
+pedigree.pruned$sire[pedigree.pruned$id == "1271009"] <- "1318880"
+pedigree.pruned$dam[pedigree.pruned$id == "1271009"] <- "1318939"
+
+## Chose randomly for this one
+na.omit(pedigree.pruned[pedigree.pruned$sire == "1146056" | pedigree.pruned$dam == "1146056", ])
+pedigree.pruned$sire[pedigree.pruned$id == "1434383"] <- "1139670"
+pedigree.pruned$dam[pedigree.pruned$id == "1434383"] <- "1146056"
+
+
+# (4) Visualise the pruned pedigree  ----
+
+edges <- pedigree.pruned %>%
+  tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
+  dplyr::select(from = value, to = id)
+
+## Build igraph object
+ped_graph <- graph_from_data_frame(edges, directed = TRUE)
+
+plot(ped_graph,
+     vertex.size = 3,
+     vertex.label = NA,
+     edge.arrow.size = 0.2,
+     layout = layout_with_sugiyama(ped_graph)$layout)
+
+
+# (5) Look at the genetic matrix A  ----
+
+ped <- pedigree.pruned
+names(ped) <- c("animal", "dam", "sire")
+
+# Deal with dams coming before offspring
+ped <- orderPed(ped)
+
+Ainv <- inverseA(ped)$Ainv
+A <- as.matrix(solve(Ainv))
+
+## Inspect sparse matrix
+A_sparse <- as(A, "dgCMatrix")
+summary(A_sparse)
+
+### Check how many non-zero off-diagonal elements
+nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
+density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
+cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
+
+pheatmap(as.matrix(A), show_rownames = FALSE, show_colnames = FALSE)
+
+
+# (6) Fit the models ----
+
+cov <- c("duration.hrs", "transitions", "transit_time.pct", "rest_time.pct", "transit_to_rest.ratio")
+rep_data$animal <- rep_data$ring
+
+rep_data$animal_shuffled <- sample(rep_data$animal)
+
+posteriors_list <- list()
+
+for (i in 1:length(cov)) {
+  
+  print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
+  
+  cov_value <- paste0("log(", cov[i], ")")
+  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring) + (1 | ring_season) + (1 | gr(animal, cov = A))")
+  
+  mod_brm <- brm(
+    formula = formula,
+    data = rep_data,
+    family = gaussian(),  
+    data2 = list(A = A),  
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Get posteriors 
+  posterior <- as_draws_df(mod_brm)
+ 
+  sd_animal <- posterior$sd_animal__Intercept
+  var_animal  <- posterior$sd_animal__Intercept^2
+  var_season  <- posterior$sd_season__Intercept^2
+  var_resid   <- posterior$sigma^2
+  h2_post <- var_animal / (var_animal + var_season + var_resid)
+  
+  posterior.df <- data.frame(cbind(sd_animal, var_animal, var_season, var_resid, h2_post),
+                             behaviour = cov[i])
+  
+  posteriors_list[[i]] <- posterior.df
+ 
+  # Output model
+  mod_name <- paste0("mod_brm_", cov[i])
+  assign(mod_name, mod_brm)
+  
+  save(list = mod_name, file = paste0("Data_outputs/bbal_birdis_brms_behaviour_heritability_", cov[i], ".RData"))
+    
+}
+
+posteriors.all <- do.call("rbind", posteriors_list)
+save(posteriors.all, file = "Data_outputs/bbal_birdis_behaviour_heritability_posteriors.RData")
+
+
+# (7) Visualise results  ----
+
+# Model checking
+plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+pp_check(mod_brm)
+
+pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+
+# Heritability 
+posteriors.all %<>%
+  group_by(behaviour) %>%
+  mutate(mean_h2 = mean(h2_post, na.rm = TRUE))
+
+posteriors.all$behaviour <- reorder(posteriors.all$behaviour, posteriors.all$mean_h2)
+
+## Recode behaviour
+posteriors.all %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"))
+
+ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
+  stat_density_ridges(fill = "skyblue",  colour = "skyblue4", linetype = "dashed", alpha = 0.7, quantile_lines = TRUE, quantiles = 2, vline_colour = "magenta4", vline_size = 1, vline_type = "dotted") +
+  theme_bw() +
+  labs(x = "Posterior heritability (h²)", y = "",
+       title = "Posterior destributions of heritability for BBAL at Bird Island") 
+
+
+```
+
+
+### ** Wandering albatrosses
+
+#### * Crozet
+
 ```{r waal_cro_behaviour_heritability }
 
 # (1) Load and subsample the data  ----
@@ -562,7 +757,7 @@ load("Data_inputs/behavioural_repeatability_data.RData")
 rep_data %<>% filter(rowSums(select(., transitions, transit_time.pct, transit_to_rest.ratio) == 0) == 0)
 rep_data %<>% filter(species == "waal" & colony == "crozet")
 
-pedigree.df <- read.csv("Data_inputs/waal_crozet_pedigree.csv")
+pedigree.df <- read.csv("Data_inputs/waal_cro_pedigree.csv")
 pedigree.df %<>% dplyr::select(-Year)
 
 
@@ -592,28 +787,6 @@ pedigree.df$id <- as.character(pedigree.df$id)
 pedigree.df$dam <- as.character(pedigree.df$dam)
 pedigree.df$sire <- as.character(pedigree.df$sire)
 rep_data$ring <- as.character(rep_data$ring)
-
-## Function to recursively get ancestors
-get_ancestors <- function(ids, pedigree) {
-  all_ids <- ids
-  new_ids <- ids
-  
-  repeat {
-    # Get dams and sires of current new_ids
-    parents <- pedigree[pedigree$id %in% new_ids, c("dam", "sire")]
-    parents <- unique(na.omit(unlist(parents)))
-    
-    # Stop if no new parents found
-    parents <- setdiff(parents, all_ids)
-    if (length(parents) == 0) break
-    
-    # Add new parents to the list
-    all_ids <- c(all_ids, parents)
-    new_ids <- parents
-  }
-  
-  return(unique(all_ids))
-}
 
 model_ids <- unique(rep_data$ring)
 ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
@@ -691,7 +864,7 @@ for (i in 1:length(cov)) {
   print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
   
   cov_value <- paste0("log(", cov[i], ")")
-  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring_season) + (1 | gr(animal, cov = A))")
+  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring) + (1 | ring_season) + (1 | gr(animal, cov = A))")
   
   mod_brm <- brm(
     formula = formula,
@@ -724,7 +897,7 @@ for (i in 1:length(cov)) {
 }
 
 posteriors.all <- do.call("rbind", posteriors_list)
-save(posteriors.all, file = "Data_outputs/TEMP_waal_cro_behavioural_heritability_posteriors.RData")
+save(posteriors.all, file = "Data_outputs/waal_cro_behaviour_heritability_posteriors.RData")
 
 
 # (7) Visualise results  ----
@@ -758,33 +931,268 @@ ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
        title = "Posterior destributions of heritability for WAAL at Crozet") +
   xlim(0, NA) 
 
-### To play with - shaded CI
 
-# First, compute summary statistics
-h2_mean <- mean(h2_post)
-h2_ci <- quantile(h2_post, probs = c(0.025, 0.975))
+```
 
-# Create data frame
-posterior.df <- data.frame(h2_post = h2_post)
+#### * Bird Island
 
-# Plot
-ggplot(posterior.df, aes(x = h2_post)) +
-  geom_density(fill = "skyblue", alpha = 0.4, color = NA) +
-  stat_function(fun = function(x) dnorm(x, mean = h2_mean, sd = sd(h2_post)), 
-                geom = "line", color = "skyblue4", linetype = "dashed") +
-  geom_vline(xintercept = h2_mean, color = "blue", linetype = "solid") +
-  geom_vline(xintercept = h2_ci, color = "red", linetype = "dashed") +
-  annotate("rect", xmin = h2_ci[1], xmax = h2_ci[2], ymin = 0, ymax = Inf, 
-           fill = "red", alpha = 0.1) +
-  labs(
-    title = "Posterior distribution of heritability (h²)",
-    x = "Heritability (h²)", y = "Density"
-  ) +
-  theme_minimal()
+```{r waal_birdis_behaviour_heritability }
+
+# (1) Load and subsample the data  ----
+load("Data_inputs/behavioural_repeatability_data.RData")
+
+# Remove zero values
+rep_data %<>% filter(rowSums(select(., transitions, transit_time.pct, transit_to_rest.ratio) == 0) == 0)
+rep_data %<>% filter(species == "waal" & colony == "birdis")
+
+pedigree.df <- read.csv("Data_inputs/waal_birdis_pedigree.csv")
+pedigree.df %<>% dplyr::select(-Year)
+
+
+# (2) Check the pedigree  ----
+
+## Are the ID in rep_data the same as id in pedigree.df?
+pedigree.df$id <- as.character(pedigree.df$id)
+rep_data$ring <- as.character(rep_data$ring)
+
+model_ids <- unique(rep_data$ring)
+pedigree_ids <- pedigree.df$id
+
+### IDs in model AND pedigree
+ids_in_both <- intersect(model_ids, pedigree_ids)
+
+### IDs in model NOT in pedigree
+ids_missing_from_pedigree <- setdiff(model_ids, pedigree_ids)
+
+### IDs in pedigree NOT in model (optional info)
+ids_unused_in_model <- setdiff(pedigree_ids, model_ids)
+
+
+# (3) Subset the pedigree to include all ancestors  ----
+
+## Check formatting
+pedigree.df$id <- as.character(pedigree.df$id)
+pedigree.df$dam <- as.character(pedigree.df$dam)
+pedigree.df$sire <- as.character(pedigree.df$sire)
+rep_data$ring <- as.character(rep_data$ring)
+
+model_ids <- unique(rep_data$ring)
+ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
+length(ped_ids_needed)
+
+## Subset the pedigree
+pedigree.pruned <- pedigree.df[pedigree.df$id %in% ped_ids_needed, ]
+
+## Check for missing IDs - NONE MISSING
+setdiff(model_ids, pedigree.pruned$id) 
+
+# Fix birds that are recorded as both dams and sires
+intersect(pedigree.pruned$sire[!is.na(pedigree.pruned$sire)], pedigree.pruned$dam[!is.na(pedigree.pruned$dam)])
+
+na.omit(pedigree.pruned[pedigree.pruned$sire == "5116152" | pedigree.pruned$dam == "5116152", ])
+pedigree.pruned$sire[pedigree.pruned$id == "4003739"] <- "5116152"
+pedigree.pruned$dam[pedigree.pruned$id == "4003739"] <- "5142862"
+
+na.omit(pedigree.pruned[pedigree.pruned$sire == "5110290" | pedigree.pruned$dam == "5110290", ])
+pedigree.pruned$sire[pedigree.pruned$id == "4003674"] <- "4000720"
+pedigree.pruned$dam[pedigree.pruned$id == "4003674"] <- "5110290"
+
+na.omit(pedigree.pruned[pedigree.pruned$sire == "5097831" | pedigree.pruned$dam == "5097831", ])
+pedigree.pruned$sire[pedigree.pruned$id == "5144330"] <- "5093486"
+pedigree.pruned$dam[pedigree.pruned$id == "5144330"] <- "5097831"
+
+# (4) Visualise the pruned pedigree  ----
+
+edges <- pedigree.pruned %>%
+  tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
+  dplyr::select(from = value, to = id)
+
+## Build igraph object
+ped_graph <- graph_from_data_frame(edges, directed = TRUE)
+
+plot(ped_graph,
+     vertex.size = 3,
+     vertex.label = NA,
+     edge.arrow.size = 0.2,
+     layout = layout_with_sugiyama(ped_graph)$layout)
+
+
+# (5) Look at the genetic matrix A  ----
+
+ped <- pedigree.pruned
+names(ped) <- c("animal", "dam", "sire")
+
+# Deal with dams coming before offspring
+ped <- orderPed(ped)
+
+Ainv <- inverseA(ped)$Ainv
+A <- as.matrix(solve(Ainv))
+
+## Inspect sparse matrix
+A_sparse <- as(A, "dgCMatrix")
+summary(A_sparse)
+
+### Check how many non-zero off-diagonal elements
+nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
+density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
+cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
+
+pheatmap(as.matrix(A), show_rownames = FALSE, show_colnames = FALSE)
+
+
+
+# (6) Fit the models ----
+
+cov <- c("duration.hrs", "transitions", "transit_time.pct", "rest_time.pct", "transit_to_rest.ratio")
+rep_data$animal <- rep_data$ring
+
+rep_data$animal_shuffled <- sample(rep_data$animal)
+
+posteriors_list <- list()
+
+for (i in 1:length(cov)) {
+  
+  print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
+  
+  cov_value <- paste0("log(", cov[i], ")")
+  formula <- paste0(cov_value, " ~ phase + age + (1 | season) + (1 | ring) + (1 | gr(animal, cov = A))")
+  
+  mod_brm <- brm(
+    formula = formula,
+    data = rep_data,
+    family = gaussian(),  
+    data2 = list(A = A), 
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Get posteriors 
+  posterior <- as_draws_df(mod_brm)
+ 
+  sd_animal <- posterior$sd_animal__Intercept
+  var_animal  <- posterior$sd_animal__Intercept^2
+  var_season  <- posterior$sd_season__Intercept^2
+  var_resid   <- posterior$sigma^2
+  h2_post <- var_animal / (var_animal + var_season + var_resid)
+  
+  posterior.df <- data.frame(cbind(sd_animal, var_animal, var_season, var_resid, h2_post),
+                             behaviour = cov[i])
+  
+  posteriors_list[[i]] <- posterior.df
+ 
+  # Output model
+  mod_name <- paste0("mod_brm_", cov[i])
+  assign(mod_name, mod_brm)
+  
+  save(list = mod_name, file = paste0("Data_outputs/waal_birdis_brms_behaviour_heritability_", cov[i], ".RData"))
+    
+}
+
+posteriors.all <- do.call("rbind", posteriors_list)
+save(posteriors.all, file = "Data_outputs/waal_birdis_behaviour_heritability_posteriors.RData")
+
+
+# (7) Visualise results  ----
+
+# Model checking
+plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+pp_check(mod_brm)
+
+pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+
+# Heritability 
+posteriors.all %<>%
+  group_by(behaviour) %>%
+  mutate(mean_h2 = mean(h2_post, na.rm = TRUE))
+
+posteriors.all$behaviour <- reorder(posteriors.all$behaviour, posteriors.all$mean_h2)
+
+## Recode behaviour
+posteriors.all %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"))
+
+ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
+  stat_density_ridges(fill = "skyblue", alpha = 0.7, quantile_lines = TRUE, quantiles = 2, vline_colour = "magenta4", vline_size = 1, vline_type = "dotted") +
+  theme_bw() +
+  labs(x = "Posterior heritability (h²)", y = "",
+       title = "Posterior destributions of heritability for WAAL at Crozet") +
+  xlim(0, NA) 
 
 
 ```
 
+
+
+
+
+#### Figure X: Heritability estimates
+
+```{r plot_heritability}
+
+bbal_birdis.posteriors <- loadRData("Data_outputs/bbal_birdis_behaviour_heritability_posteriors.RData") %>%
+  mutate(spec_col = "BBAL Bird Island")
+waal_birdis.posteriors <- loadRData("Data_outputs/waal_birdis_behaviour_heritability_posteriors.RData") %>%
+  mutate(spec_col = "WAAL Bird Island")
+waal_cro.posteriors <- loadRData("Data_outputs/waal_cro_behaviour_heritability_posteriors.RData") %>%
+  mutate(spec_col = "WAAL Crozet")
+
+# Process the data
+posteriors.all <- rbind(bbal_birdis.posteriors, waal_birdis.posteriors, waal_cro.posteriors)
+
+posteriors.all %<>%
+  group_by(spec_col, behaviour) %>%
+  mutate(mean_h2 = mean(h2_post, na.rm = TRUE)) %>%
+  arrange(behaviour, mean_h2) %>%
+  ungroup()
+
+## Recode behaviour
+posteriors.all %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"),
+      behaviour = factor(behaviour, levels = rev(c("Trip duration", "Landings", "Rest time", "Flight time", "Flight:Rest ratio"))))
+
+## Add facet code for plotting
+posteriors.all %<>%
+   mutate(facet_code = case_when(
+    spec_col == "BBAL Bird Island" ~ "A",
+    spec_col == "WAAL Bird Island" ~ "C",
+    spec_col == "WAAL Crozet" ~ "D"))
+
+
+# Make the plot
+design = "
+A#
+CD
+"
+
+facet_labels <- c(
+  A = "BBAL Bird Island",
+  C = "WAAL Bird Island",
+  D = "WAAL Crozet"
+)
+
+heritability_plot <- ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
+  # stat_density_ridges(fill = "#1b9e77",  alpha = 0.6, scale = 1, quantile_lines = TRUE, quantiles = 2, vline_colour = "#08519c", vline_size = 1, vline_type = "dashed") +
+  geom_density_ridges(fill = "#1b9e77", alpha = 0.6, scale = 1) +
+  theme_bw() +
+   ggh4x::facet_manual(~facet_code, design = design, scales = "free_x",
+                       labeller = as_labeller(facet_labels)) +
+  labs(x = "Posterior distribution for heritability (h²)", y = "") 
+
+
+png(filename = "Figures/MS Figures/FIGx_behaviour_heritability.png", width = 10, height = 10, units = "in", res = 900)
+heritability_plot
+dev.off()
+
+```
 
 ## Supplementary analyses
 

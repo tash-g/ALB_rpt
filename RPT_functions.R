@@ -64,7 +64,28 @@ loadRData <- function(fileName){
 
 
 
+# * HERITABILITY FUNCTIONS * ----------------------------------------------
 
+get_ancestors <- function(ids, pedigree) {
+  all_ids <- ids
+  new_ids <- ids
+  
+  repeat {
+    # Get dams and sires of current new_ids
+    parents <- pedigree[pedigree$id %in% new_ids, c("dam", "sire")]
+    parents <- unique(na.omit(unlist(parents)))
+    
+    # Stop if no new parents found
+    parents <- setdiff(parents, all_ids)
+    if (length(parents) == 0) break
+    
+    # Add new parents to the list
+    all_ids <- c(all_ids, parents)
+    new_ids <- parents
+  }
+  
+  return(unique(all_ids))
+}
 
 # * MODEL DIAGNOSES * -----------------------------------------------------
 
@@ -191,6 +212,23 @@ logit_to_prob <- function(logit_val) {
 # }
 
 # * PLOTTING FUNCTIONS * --------------------------------------------------
+
+# Plotting individual used estimates
+make_plot <- function(df) {
+  df <- df %>%
+    mutate(ring_ordered = forcats::fct_reorder(ID, estimate))
+  
+  ggplot(df, aes(x = estimate, y = ring_ordered, col = env)) +
+    geom_point() +
+    geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+    scale_color_manual(values = env_colours, guide = "none") +
+    facet_wrap(~group, scales = "free") +
+    labs(title = unique(df$env),
+         x = "Random intercept estimate",
+         y = "ID") +
+    theme_bw() +
+    theme(axis.text.y = element_blank())}
+
 
 # Plot individual responses to habitat
 

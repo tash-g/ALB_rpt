@@ -36,9 +36,13 @@ options(dplyr.summarise.inform = FALSE)
 # Make sure using dplyr select
 select <- dplyr::select
 
+# Set colours
+col_between <- "#91c5f2"
+col_within <- "#0b3860"
+
 ```
 
-### Sample sizes for colony & species
+## Sample sizes for colony & species
 
 ```{r sample_sizes}
 ### Sample sizes
@@ -93,6 +97,8 @@ The distribution of repeats is quite patchy. Crozet WAAL have the most years of 
 Because of this, in the across-individuals, within-years analyses I have filtered out years where only one individual is represented.
 
 ### Foraging movements
+
+#### Figure SX: Foraging tracks for all populations 
 
 ```{r prep_GPS_data, eval = FALSE, include = FALSE}
 
@@ -235,7 +241,7 @@ for (file in plot_paths) {
   load(file)
 }
 
-#png("Figures/MS Figures/FIGX_all_gps_tracks.png", width = 10, height = 10, units = "in", res = 700)
+#png("Figures/MS Figures/FIG2_all_gps_tracks.png", width = 10, height = 10, units = "in", res = 700)
 ggarrange(bba_kerguelen_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')), 
           bba_birdis_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
           waal_crozet_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
@@ -251,6 +257,8 @@ Here I've plotted all the GPS tracks for the different species and colonies. Not
 #### Example tracks from each species/colony
 
 Here I've plotted a couple of examples of within- versus between-individual tracks for each species and colony. These have been cherry-picked to show individuals with similar tracks to illustrate the greatest level of within-track similarity; note that even the most similar wandering albatross tend to show a lot of variation in their trips.
+
+#### Figure SX:  Example GPS trtacks
 
 ```{r example_gps_plots, fig.height=8, fig.width=10}
 
@@ -337,7 +345,7 @@ for (i in 1:length(spec_col)) {
   
 }
 
-#png("Figures/MS Figures/FIGX_spatial_repeatability_example_tracks.png", width = 10, height = 10, units = "in", res = 700)
+#png("Figures/MS Figures/FIG3_spatial_repeatability_example_tracks.png", width = 10, height = 10, units = "in", res = 700)
 ggarrange(bba_kerguelen_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')), 
           bba_birdis_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
           waal_crozet_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
@@ -349,7 +357,7 @@ ggarrange(bba_kerguelen_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 
 
 ```
 
-### Bearing comparisons
+## Bearings
 
 For these analyses, I'm looking at birds' bearings between the colony and the furthest point of each foraging trip, which I call their 'trajectory'. For each bird, I calculated the bearing between the colony and the distal point of each trip.
 
@@ -429,20 +437,27 @@ for (i in 1:length(spec_col)) {
   trip_bearings$colony <- strsplit(spec_col[i], "_")[[1]][2]
   trip_bearings.list[[i]] <- trip_bearings
 
+  # Get start times look-up
+  trip_starts <- my_gps %>%
+    mutate(tripID = paste0(season, "_", boutID)) %>%
+    group_by(ring, tripID) %>%
+    summarise(start_time = min(datetime), .groups = "drop")
+  
+  
   # Compute the bearing differences ----------
   
   # Within-individual bearings #
-  bearings_within <- calculate_bearing_diffs(trip_bearings, "bearing_col", "bearing_diff", comparison_type = "within")
+  bearings_within <- calculate_bearing_diffs(trip_bearings, "bearing_col", "bearing_diff", comparison_type = "within", trip_starts)
   
   # Between-individual differences #
-  bearings_between <- calculate_bearing_diffs(trip_bearings, "bearing_col", "bearing_diff", comparison_type = "between")
+  bearings_between <- calculate_bearing_diffs(trip_bearings, "bearing_col", "bearing_diff", comparison_type = "between", trip_starts)
   
   ## Downsample the between dataset to match within 
   n_within_between = nrow(bearings_within %>% filter(comp_season == "between_season"))
   n_within_within = nrow(bearings_within %>% filter(comp_season == "within_season"))
  
-  bearings_between_between <- bearings_between %>% sample_n(size = n_within_between, replace = FALSE)
-  bearings_between_within <- bearings_between %>% sample_n(size = n_within_within, replace = FALSE)
+  bearings_between_between <- bearings_between %>% filter(comp_season == "between_season") %>% sample_n(size = n_within_between, replace = FALSE)
+  bearings_between_within <- bearings_between %>% filter(comp_season == "within_season") %>% sample_n(size = n_within_within, replace = FALSE)
   
   # Combine results #
   bearing_differences <- rbind(bearings_within, bearings_between_between, bearings_between_within)
@@ -456,7 +471,7 @@ save(bearings.df, file = "Data_outputs/bearings_data.RData")
 
 ```
 
-#### Bearings from the colony
+### Plot bearings from the colony
 
 Here I've plotted birds' average observed bearings from the colony.
 
@@ -491,7 +506,7 @@ ggplot(bearings.df, aes(x = bearing_360)) +
   
 ```
 
-#### Modelling bearing differences
+### Modelling bearing differences
 
 I fitted linear models to each species and colony to look at whether differences in trip trajectories were stronger among- than within-individuals (comp_ind) and/or across- or within-seasons. I've used linear models, rather than linear mixed-effects models, as the dyad identity (i.e. the identity of the pair, e.g. bird1_bird1 or bird1_bird2) is confounded completely by comp_ind. To avoid issues with multiple measurements, I randomly sampled one comparison from each dyad - as I started with a huge number of comparisons, this doesn't create issues with data reduction.
 
@@ -555,8 +570,8 @@ for (i in seq_along(spec_col)) {
     bearing_differences %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))
     bearing_differences <- droplevels(bearing_differences)
     
-    m1 <- lm(bearing_diff ~ comp_ind + comp_season, data = bearing_differences) } else {
-        m1 <- lm(bearing_diff ~ comp_ind * comp_season, data = bearing_differences)
+    m1 <- lm(bearing_diff ~ comp_ind + comp_season + inter_obs_dist, data = bearing_differences) } else {
+        m1 <- lm(bearing_diff ~ comp_ind * comp_season + inter_obs_dist, data = bearing_differences)
     }
 
    ## Diagnostics
@@ -606,6 +621,8 @@ save(bearings_means, file = "Data_outputs/bearings_means.RData")
 
 ```
 
+#### Figure 2: Bearing differences
+
 ```{r plot_bearings_diffs, fig.dim=c(6,6)}
 
 load("Data_outputs/bearings_means.RData")
@@ -625,7 +642,7 @@ bearings_plot <- bearings_means %>%
       colony == "ker" ~ "Kerguelen",
       colony == "cro" ~ "Crozet",
       TRUE ~ colony),
-    spec_col = paste(species, colony, sep = ", "))
+    spec_col = paste(species, colony, sep = " "))
 
 
 # For interpretation, convert bearing difference to a bearing similarity measure (0 = dissimilar, 1 = the same) - promotes comparison with BA
@@ -635,7 +652,7 @@ bearings_plot <- bearings_means %>%
 #          similarity_lower = bearing_similarity - 1.96 * similarity_SE,
 #          similarity_upper = bearing_similarity + 1.96 * similarity_SE)
 
-png(filename = "Figures/MS Figures/FIGX_spatial_repeatability_bearings_comparison.png", width = 6, height = 6, units = "in", res = 900)
+png(filename = "Figures/MS Figures/FIG2_spatial_repeatability_bearings_comparison.png", width = 6, height = 6, units = "in", res = 900)
 ggplot(bearings_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
   geom_point() +
   geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
@@ -643,7 +660,9 @@ ggplot(bearings_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
   geom_line(aes(group = comp_season)) +
   labs(x = "", colour = "", y = "Difference in bearing") +
   facet_wrap(~spec_col) +
-  scale_colour_viridis_d(labels = c("Within season", "Across seasons")) +
+  scale_colour_manual(
+    values = c(col_within, col_between),
+    labels = c("Within season", "Across seasons") ) +
   scale_x_discrete(labels = c("Within individual", "Among individual")) +
   theme_bw() +
   theme(legend.position = c(0.13, 0.97),
@@ -668,14 +687,21 @@ bearings_summary %<>%
             Term == "(Intercept)"  ~ "Intercept",
             Term == "comp_seasonbetween_season" ~ "Across seasons",
             Term == "comp_indbetween_ring" ~ "Among individuals",
-            Term == "comp_indbetween_ring:comp_seasonbetween_season" ~ "Among individuals * Across seasons"),
-         Estimate = paste0(signif(Estimate,4), " \u00B1 ", signif(Std_Error, 2)),
+            Term == "comp_indbetween_ring:comp_seasonbetween_season" ~ "Among individuals * Across seasons",
+            TRUE ~ "Inter-observation distance"),
+         Estimate = paste0(signif(Estimate, 4), " \u00B1 ", signif(Std_Error, 4)),
          t_value = signif(t_value, 4),
          p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 4), nsmall = 4, scientific = FALSE))) %>%
+  mutate(Term = factor(Term, levels = c(
+    "Intercept",
+    "Among individuals",
+    "Across seasons",
+    "Among individuals * Across seasons",
+    "Inter-observation distance"))) %>%
   rename('t value' = t_value, 'p value' = p_value) %>%
   select(-c(species, colony, Std_Error)) %>%
   relocate(c(Species, Colony), .before = Term) %>%
-  arrange(Species, Colony) %>%
+  arrange(Species, Colony, Term) %>%
   mutate(CI = paste0("[", signif(CI_lower, 4), ", ", signif(CI_upper, 4), "]")) %>%
   relocate(CI, .before = "t value") %>%
   select(-c(CI_lower, CI_upper))
@@ -690,21 +716,128 @@ knitr::kable(bearings_summary, format = "html",
 
 ```
 
-#### Bearing differences summary
+### Heritability of bearings
 
--   *BBAL at Bird Island* : Birds showed significantly greater bearing differences both across seasons and among individuals. However, a strong negative interaction between these effects suggests that individual birds maintained consistent foraging directions across years, indicating high within-individual repeatability despite broader seasonal and population-level variation.
+```{r bearings_heritability}
 
-    -   While the season variable shows a significant effect on bearing differences, this effect is largely explained by the interaction between individual and season. Specifically, the individual differences (e.g., between birds) interact with the season to reducing the overall effect of the season itself on the outcome. This suggests that, when accounting for individual variability, the differences between seasons become much less pronounced.
+load("Data_outputs/bearings_data.RData")
 
--   *BBAL at Kerguelen* : Birds exhibited signficant among-individual variation (i.e. individuals were consistent), but there was no clear effect of season or its interaction with individual, suggesting stable foraging patterns that differ between individuals but do not systematically shift year-to-year.
+# Get trip ID
+bearings.df %<>%
+  separate(boutID, into = c("season", "trip1", "trip2"), sep = "_") %>%
+  mutate(tripID = paste0(ring, "_", season, "_", trip1, trip2)) %>%
+  ungroup() %>%
+  select(-c(ID, trip1, trip2))
 
--   *WAAL at Bird Island* : Birds showed a significant decrease in bearing differences across seasons, implying that individual birds were more consistent in their foraging behaviour between years than within a given season. Although among-individual variation was also significant, the positive interaction between individual and seasonal effects (marginally non-significant) suggests that some individual differences may become more pronounced across seasons.
+formula <- "bearing_col ~ 1 + phase + (1 | gr(animal, cov = Amat)) + (1 | ring_pe)"
 
--   *WAAL at Crozet* : Birds differed significantly from one another and changing between years i.e. they were strongly consistent within seasons. The significant negative interaction indicates that individuals were more consistent in their bearing across seasons than would be expected based on the main effects alone.
+# Loop through species and colonies
 
-### BA comparisons
+spec_col <- c("bbal_birdis", "waal_birdis", "waal_cro")
+posteriors = list()
 
-After experimenting with DTW values (see Appendix), I ultimately switched to using Bhattycharyya's Affinity. This is more commonly used, and I think better captures what I'm interested in - which is space use. DTW was likely to be too heavily influenced by instantaneous environmental conditions during trips. By comparing with the bearings, I can identify both whether individuals are 'targeting' similar places, and whether they spend time in the same places overall. 
+for (i in 1:length(spec_col)) {
+  
+  species <- strsplit(spec_col[i], "_")[[1]][1]
+  colony <- strsplit(spec_col[i], "_")[[1]][2]
+  
+  focal.bearings <- bearings.df %>% filter(species == species & colony == colony)
+  
+  pedigree.df <- read.csv(paste0("Data_inputs/", spec_col[i], "_pedigree.csv"))[,1:3]
+  pedigree.df[,c(1:3)] <- lapply(pedigree.df[,c(1:3)], as.character)
+  
+  # Prune the pedigree
+  focal.bearings$ring <- as.character(focal.bearings$ring)
+  
+  model_ids <- unique(focal.bearings$ring)
+  pedigree_ids <- pedigree.df$id
+  
+  ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
+  pedigree.pruned <- pedigree.df[pedigree.df$id %in% ped_ids_needed, ]
+  
+  ## Add founders
+  missing_ids <- setdiff(model_ids, pedigree.pruned$id)
+  founders <- data.frame(id = missing_ids, dam = NA, sire = NA)
+  
+  pedigree.extended <- rbind(pedigree.df, founders)
+  ped_ids_needed <- get_ancestors(model_ids, pedigree.extended)
+  pedigree.pruned <- pedigree.extended[pedigree.extended$id %in% ped_ids_needed, ]
+  
+  ## Visualise the pedigree
+  edges <- pedigree.pruned %>%
+    tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
+    dplyr::select(from = value, to = id)
+  
+  ped_graph <- graph_from_data_frame(edges, directed = TRUE)
+  
+  plot(ped_graph,
+       vertex.size = 3,
+       vertex.label = NA,
+       edge.arrow.size = 0.2,
+       layout = layout_with_sugiyama(ped_graph)$layout)
+  
+  
+  # Build the genetic matrix
+  ped <- pedigree.pruned
+  names(ped) <- c("animal", "dam", "sire")
+  ped <- orderPed(ped)
+  Amat <- as.matrix(nadiv::makeA(ped))
+  
+  # Fit the model
+  focal.bearings %<>% mutate(animal = ring, ring_pe = ring)
+  
+  brm_bearing_heritability <- brm(
+    formula = formula,
+    data = focal.bearings,
+    data2 = list(Amat = Amat),
+    chains = 2, cores = 2, iter = 4000 )
+  
+  save(brm_bearing_heritability, file = paste0("Data_outputs/", spec_col[i], "_bearing_heritability.RData"))
+  
+  # Estimate heritability
+  v_animal <- (VarCorr(brm_bearing_heritability, summary = FALSE)$animal$sd)^2
+  v_r <- (VarCorr(brm_bearing_heritability, summary = FALSE)$residual$sd)^2
+  
+  h2 <- as.mcmc(v_animal / (v_animal + v_r))
+  
+  summary(h2)
+  plot(h2)
+  
+  posteriors[[i]] <- data.frame(species = species,
+                           colony = colony,
+                           h2 = h2)
+  
+}
+
+posteriors_all <- do_call("rbind", posteriors)
+
+posteriors_all %<>%
+  mutate(spec_col = case_when(
+      species == "bbal" ~ "BBAL Bird Island",
+      species == "waal" & colony == "birdis" ~ "WAAL Bird Island",
+      TRUE ~ "WAAL Crozet"),
+      spec_col = factor(spec_col, levels = rev(unique(spec_col))))
+
+save(posteriors_all, file = "all_posteriors_spatial_heritability.RData")
+
+```
+
+#### Figure X: Heritability of bearings
+
+```{r spatial_heritability}
+
+png(filename = "Figures/MS Figures/FIGX_spatial_heritability.png", width = 6, height = 6, units = "in", res = 900)
+ggplot(posteriors_all, aes(x = Intercept, y = spec_col)) +
+  geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
+  labs(x = "Additive genetic heritability (h²)", y = "") +
+  theme_bw() 
+dev.off()
+
+```
+
+
+
+## Bhattacharyya's Affinity
 
 ```{r prep_BA_data, eval = FALSE}
 
@@ -736,6 +869,12 @@ for (i in 1:length(spec_col)) {
     pull(tripID)
   
   my_gps %<>% mutate(phase = if_else(tripID %in% trips_to_fix & phase == "brooding", "incubation", phase))
+  
+  # Get start times look-up
+  trip_starts <- my_gps %>%
+    mutate(tripID = paste(season, "_", boutID)) %>%
+    group_by(ring, tripID) %>%
+    summarise(start_time = min(datetime), .groups = "drop")
   
   ### Meta for phase comparisons later
   my_meta <- my_gps %>%
@@ -815,7 +954,9 @@ for (i in 1:length(spec_col)) {
     
     # Subset data for both trips
     trip1 <- subset(my_gps, ID == ba_within.df$tripID_1[j])
+    trip1.stt <- min(trip1$datetime)
     trip2 <- subset(my_gps, ID == ba_within.df$tripID_2[j])
+    trip2.stt <- min(trip2$datetime)
     
     # Combine trips and factorize ID
     both_trips <- rbind(trip1, trip2) 
@@ -848,7 +989,8 @@ for (i in 1:length(spec_col)) {
     # Output
     output <- data.frame(trip1 = ba_within.df$tripID_1[j],
                          trip2 = ba_within.df$tripID_2[j],
-                         ba_val = overlap_val)
+                         ba_val = overlap_val,
+                         inter_obs_dist = abs(as.numeric(difftime(trip1.stt, trip2.stt, units = "days"))))
   
     ba_within.list[[j]] <- output 
     
@@ -928,7 +1070,9 @@ for (i in 1:length(spec_col)) {
     
     # Subset data for both trips
     trip1 <- subset(my_gps, ID == ba_between$tripID_1[k])
+    trip1.stt <- min(trip1$datetime)
     trip2 <- subset(my_gps, ID == ba_between$tripID_2[k])
+    trip2.stt <- min(trip2$datetime) 
     
     # Combine trips and factorize ID
     both_trips <- rbind(trip1, trip2) 
@@ -961,7 +1105,8 @@ for (i in 1:length(spec_col)) {
     # Output
     output <- data.frame(trip1 = ba_between$tripID_1[k],
                          trip2 = ba_between$tripID_2[k],
-                         ba_val = overlap_val)
+                         ba_val = overlap_val,
+                         inter_obs_dist = abs(as.numeric(difftime(trip1.stt, trip2.stt, units = "days"))))
   
     ba_between.list[[k]] <- output 
     
@@ -992,7 +1137,7 @@ for (i in 1:length(spec_col)) {
   
 ```
 
-#### Modelling BA differences
+### Modelling BA differences
 
 The modelling approach is similar to the trip trajectory comparison; that is, I compared within individual, between individual, and between individual but within seasons. There is a heavy right skew in the DTW distances, so to account for this I log-transformed the response so it better approximates a normal distribution - I've taken this approach as I'm specifically interested in the differences between the comparison groups, so interpretation (which is reduced with a log transformation) is less important.
 
@@ -1058,8 +1203,8 @@ for (i in seq_along(spec_col)) {
     ba.df %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))
     ba.df <- droplevels(ba.df)
     
-    m1 <- betareg(ba_val ~ comp_ind + comp_season, data = ba.df) } else {
-        m1 <- betareg(ba_val ~ comp_ind * comp_season, data = ba.df)
+    m1 <- betareg(ba_val ~ comp_ind + comp_season + inter_obs_dist, data = ba.df) } else {
+        m1 <- betareg(ba_val ~ comp_ind * comp_season + inter_obs_dist, data = ba.df)
     }
  
   ## Diagnostics
@@ -1108,6 +1253,8 @@ save(ba_means,   file = "Data_outputs/ba_means.RData")
 
 ```
 
+#### Figure 3: BA differences
+
 ```{r plot_ba_diffs, fig.dim=c(6,6)}
 
 load("Data_outputs/ba_means.RData")
@@ -1127,11 +1274,11 @@ ba_plot <- ba_means %>%
       colony == "ker" ~ "Kerguelen",
       colony == "cro" ~ "Crozet",
       TRUE ~ colony),
-    spec_col = paste(species, colony, sep = ", ") ) %>%
+    spec_col = paste(species, colony, sep = " ") ) %>%
   rename(lower.CL = asymp.LCL,
          upper.CL = asymp.UCL)
 
-png(filename = "Figures/MS Figures/FIGX_spatial_repeatability_ba_comparison.png", width = 6, height = 6, units = "in", res = 900)
+png(filename = "Figures/MS Figures/FIG3_spatial_repeatability_ba_comparison.png", width = 6, height = 6, units = "in", res = 900)
 ggplot(ba_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
   geom_point() +
   geom_errorbar(aes(ymin = lower.CL, ymax = upper.CL),
@@ -1139,7 +1286,9 @@ ggplot(ba_plot, aes(x = comp_ind, y = emmean, colour = comp_season)) +
   geom_line(aes(group = comp_season)) +
   labs(x = "", colour = "", y = "Bhattacharyya’s affinity") +
   facet_wrap(~spec_col) +
-  scale_colour_viridis_d(labels = c("Within season", "Across seasons")) +
+  scale_colour_manual(
+    values = c(col_within, col_between),
+    labels = c("Within season", "Across seasons") ) +
   scale_x_discrete(labels = c("Within individual", "Among individual")) +
   theme_bw() +
   theme(legend.position = c(0.36, 0.97),
@@ -1164,15 +1313,22 @@ ba_summary %<>%
             Term == "(Intercept)"  ~ "Intercept",
             Term == "comp_seasonbetween_season" ~ "Across seasons",
             Term == "comp_indbetween_ring" ~ "Among individuals",
-            Term == "comp_indbetween_ring:comp_seasonbetween_season"~ "Among individuals * Across seasons"),
-         Estimate = paste0(signif(Estimate, 2), " \u00B1 ", signif(Std_Error, 2)),
-         t_value = signif(t_value, 2), 
-         p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 2), nsmall = 2, scientific = FALSE))) %>%
+            Term == "comp_indbetween_ring:comp_seasonbetween_season" ~ "Among individuals * Across seasons",
+            TRUE ~ "Inter-observation distance"),
+         Estimate = paste0(signif(Estimate, 4), " \u00B1 ", signif(Std_Error, 4)),
+         t_value = signif(t_value, 4),
+         p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 4), nsmall = 4, scientific = FALSE))) %>%
+  mutate(Term = factor(Term, levels = c(
+    "Intercept",
+    "Among individuals",
+    "Across seasons",
+    "Among individuals * Across seasons",
+    "Inter-observation distance"))) %>%
   rename('t value' = t_value, 'p value' = p_value) %>%
   select(-c(species, colony, Std_Error)) %>%
   relocate(c(Species, Colony), .before = Term) %>%
-  arrange(Species, Colony) %>%
-  mutate(CI = paste0("[", signif(CI_lower, 2), ", ", signif(CI_upper, 2), "]")) %>%
+  arrange(Species, Colony, Term) %>%
+  mutate(CI = paste0("[", signif(CI_lower, 4), ", ", signif(CI_upper, 4), "]")) %>%
   relocate(CI, .before = "t value") %>%
   select(-c(CI_lower, CI_upper))
          
@@ -1185,35 +1341,7 @@ knitr::kable(ba_summary, format = "html",
 
 ```
 
-#### Track similarity summary
-
--   *BBAL at Bird Island* : Birds exhibited high overall individual consistency in track shape. DTW scores were significantly lower across seasons, indicating that birds were more consistent in their movement patterns between years than within seasons. However, the interaction between season and individual identity was not significant, suggesting this consistency was stable across years.
-
--   *BBAL at Kerguelen* : Birds also showed strong individual consistency, with substantial among-individual differences in foraging track shape. There was no significant effect of season or interaction term, indicating that movement patterns were stable both within and across years for individuals.
-
--   *WAAL at Bird Island* : Birds showed modest consistency in track shape, as indicated by a significant among-individual effect. However, there was no clear seasonal effect or interaction, suggesting that individuals did not consistently change or maintain their movement patterns across seasons..
-
--   *WAAL at Crozet* : Birds showed high individual consistency but only within seasons: DTW scores were significantly higher across seasons, indicating that foraging tracks became more dissimilar between years. Despite this, strong among-individual effects indicate that birds retained consistent individual differences in movement patterns.
-
-### Interpretation
-
-#### Black-browed albatrosses
-
-At Bird Island, BBA showed strong evidence of individual consistency in both direction and spatial patterns of foraging. Bearing differences were significantly higher across seasons, but this effect was offset by a significant negative interaction with individual identity, suggesting that while individual birds maintained consistent differences in bearing over time, there were broad shifts between years. DTW scores did not differ with season: individuals were as consistent within- as across-seasons. Together, these results imply a high degree of individual specialisation in terms of foraging direction, but less consistency with regards to route structure.
-
-At Kerguelen, BBA also showed consistent individual differences in both metrics, with significant among-individual effects in bearing differences and DTW. However, there was no significant effect of season in either metric, indicating that both the direction and shape of foraging trips were temporally stable. This suggests a high degree of individual specialisation that is not influenced by interannual environmental variation.
-
-#### Wandering albatrosses
-
-At Bird Island, WAAL showed significant among-individual variation in both bearing and DTW metrics, suggesting consistent individual differences in foraging behaviour. However, bearing differences were significantly lower across seasons, indicating that birds were more consistent in their bearings between years than within them. DTW did not show a strong seasonal effect, suggesting that while individuals were consistent, the spatial shape of foraging tracks was relatively stable across time.
-
-At Crozet, WAAL showed strong evidence of seasonal change. Bearing differences were significantly higher across seasons, indicating directional shifts in foraging between years. Likewise, DTW scores increased significantly across seasons, reflecting substantial changes in spatial trajectories over time. However, significant among-individual effects in both metrics, and a strong negative interaction in DTW, suggest that individual birds still retained some degree of consistency relative to each other, at least within seasons.
-
-#### Overall
-
-Across both species, individual consistency in foraging behaviour was widespread, with significant among-individual variation in both bearing and trajectory metrics at all colonies. However, the degree to which these patterns were stable across years varied by species and location. Black-browed albatrosses, particularly at Kerguelen, showed the most stable and consistent foraging behaviours over time. In contrast, wandering albatrosses at Crozet exhibited clear interannual shifts, likely reflecting responses to environmental variability, though individual birds still differed consistently from one another.
-
-### Supplementary analyses
+## Supplementary analyses
 
 #### Does the seasonal interval matter for comparisons?
 
