@@ -1,5 +1,5 @@
 ---
-title: "Behavioural repeatability results"
+title: "Repeatability in foraging effort results"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
@@ -7,13 +7,25 @@ output:
     toc_float: true
     toc_depth: 4
 ---
-### SETUP
 
 **Note:** Naming conventions for files:
   - Bird Island = birdis
   - Crozet = cro
   - Kerguelen = ker
   - Chlorophyll = chl
+  
+Inputs:
+  - *species_colony*_individual_trips_summary.RData
+  - ind_meta.RData 
+  - *species_colony*_pedigree.csv
+
+Outputs:
+  - behavioural_repeatability_data.RData
+  - Figure 1
+  - Table 1
+  - Figure SX
+
+## Set-up
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
@@ -37,7 +49,9 @@ select <- dplyr::select
 col_between <- "#91c5f2"
 col_within <- "#0b3860"
 
-# Load & process data ==========================================================
+```
+
+```{r process_data}
 
 ind_files <- list.files("Data_inputs/", pattern = "individual_trips")
 ind_list <- vector(mode = "list", length = 4)
@@ -51,7 +65,7 @@ for (i in 1:length(ind_files)) {
 
 trip_data <- do.call("rbind", ind_list)
 
-# Load metadata ---------------
+# Load metadata ====
 
 load("Data_inputs/ind_meta.RData")
 
@@ -61,7 +75,7 @@ trip_data <- merge(trip_data, all_ind.meta %>% mutate(species = tolower(species)
          age = season - birthYr,
          age = ifelse(age < 0, NA, age)) 
 
-# Filter data ---------------
+# Filter data ====
 
 # Remove any trips where transitions == 0 (not real foraging)
 rep_data <- trip_data %>% 
@@ -75,55 +89,6 @@ rep_data <- trip_data %>%
 
 
 save(rep_data, file = "Data_inputs/behavioural_repeatability_data.RData")
-
-
-
-
-```
-
-```{r foraging_effort_bertille, eval = FALSE}
-
-rep_data %<>% mutate(landings_per_day = landing/duration.days)
-
-# Get mean landings per day per season per individual
-
-summary_landings <- rep_data %>% group_by(species, colony, ring, season) %>% summarise(mean_landings = mean(landings_per_day))
-
-lmm1 <- lmer(landings_per_day ~ colony + species + (1|ring), data = rep_data)
-
-ggplot(summary_landings, aes(x = factor(season), y = mean_landings, col = colony)) +
-  geom_jitter(width = 0.2, alpha = 0.5) +
-  facet_wrap(~ species) +
-  labs(y = "Mean landings per day of trip") +
-  theme_bw() +
-  theme(axis.title.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.text.x = element_blank())
-
-
-# Plot random intercepts
-ranefs <- broom.mixed::tidy(lmm1, effects = "ran_vals", conf.int = TRUE)
-ring_ranefs <- ranefs[ranefs$group == "ring", ] %>% rename(ring = level)
-
-## Add colony/species back
-meta <- rep_data %>% select(c(ring, colony, species)) %>% distinct()
-ring_ranefs <- merge(ring_ranefs, meta, by = "ring", all.x = T) %>%
-  mutate(spec_col = paste(species, colony, sep = "_"))
-
-ggplot(ring_ranefs, aes(x = estimate, y = reorder(ring, estimate))) +
-  geom_point() +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
-  facet_wrap(~ spec_col, scales = "free_y") +
-  labs(x = "Random intercept estimate", y = "Ring ID") +
-  theme_bw() +
-  theme(axis.text.y = element_blank())
-
-
-# Get summarised data
-behav.df <- rep_data %>%
-              select(c(species, colony, ring, season, landing, duration.days, duration.hrs, phase))
-
-write.csv(behav.df, file = "Data_outputs/behaviour_summarised.csv", row.names = F)
 
 ```
 
@@ -168,7 +133,7 @@ kable(trips.table, format = "html",
 
 ```
 
-## Testing for repeatablity
+# Testing for repeatablity
 
 This analysis looks at repeatability in foraging behaviours. I am looking at five behavioural variables:
 
@@ -178,39 +143,7 @@ This analysis looks at repeatability in foraging behaviours. I am looking at fiv
 4.  *rest_time.pct* = Percentage of foraging trip spent in rest
 5.  *transit_to_rest.ratio* = Ratio of flight to rest time; \>1 = more flight than rest, \<1 = more rest than flight
 
-I dropped the distance metrics, as I did not have sufficient repeats across the datasets to produce reliable estimates of repeatability.
-
-I have then written my own repeatability functions, which explicitly partition repeatability into **annual** repeatability (season level), **within-season** repeatabilty (ring:season level) and **between-season** repeatability (ring level). This is because *rptR* doesn't natively handle this kind of decomposition - it can only estimate repeatabilty for a single grouping factor at a time.
-
-In my functions, I manually boostrap confidence intervals and SEs around repeatability by resampling the data and refitting models:
-
-*To estimate uncertainty around repeatability estimates, we implemented a nonparametric bootstrap procedure with 1000 iterations. In each iteration, the dataset was resampled with replacement, the linear mixed-effects model was refitted, and variance components were extracted. We calculated repeatability for each iteration as the proportion of variance explained at the relevant grouping level (ring, season, or ring:season). From the resulting distributions, we computed mean estimates, standard errors, and 95% confidence intervals based on the 2.5th and 97.5th percentiles.*
-
-The basic formula used in this analysis is:
-
-$$y = \beta_0 + \beta_1 \cdot \text{phase} + \beta_2 \cdot \text{age} + \beta_3 \cdot \text{colony} + U_{\text{ring}} + U_{\text{season}} + U_{\text{ring:season}} + \varepsilon$$
-
-where:
-
--   $y$ represents each of the 5 behavioural response variables,
-
--   $\beta_0$ is the intercept,
-
--   $\beta_1$ - $\beta_{3}$ are fixed effect coefficients for $phase$, $age$, and $colony$,
-
--   $U_{\text{ring}}$, $U_{\text{season}}$, and $U_{\text{ring:season}}$ are random intercepts for ring, season, and ring within season respectively,
-
-    $$U_{\text{ring}} \sim \mathcal{N}(0, \sigma^2_{\text{ring}})$$
-
-    $$U_{\text{season}} \sim \mathcal{N}(0, \sigma^2_{\text{season}})$$
-
-    $$U_{\text{ring_season}} \sim \mathcal{N}(0, \sigma^2_{\text{ring_season}})$$
-
--   $ε$ is the residual error.
-
-    $$ε \sim \mathcal{N}(0, \sigma^2_{\text{res}})$$
-
-Several of the predictor values have positive-skewed distributions with heavy tails. As I'm not interested in predictions, a simple and stable approach to dealing with this is simply to **log-transform** $y$ in each model. The only exception for this is *transit_time.pct*, which, even though it is a percentage, it is relatively normally distributed, the residuals look good, and the values are comfortably away from the 0 to 100 boundaries (i.e. mostly between 20 and 80). The distribution of *rest_time.pct* is a little problematic - the values are right skewed with a very long tail towards high values and lots of values around 0. Possibly a beta model would be a better fit here. But for ease of computation, I'm pursuing the log transformation for now. The variances don't look super different between this and a beta model.
+All of the predictor values have positive-skewed distributions with heavy tails. As I'm not interested in predictions, a simple and stable approach to dealing with this is simply to **log-transform** $y$ in each model. The distribution of *rest_time.pct* is a little problematic - the values are right skewed with a very long tail towards high values and lots of values around 0. Possibly a beta model would be a better fit here. But for ease of computation, I'm pursuing the log transformation as the variances don't look worryingly different between this and a beta model.
 
 ```{r calculating_repeatability, eval = FALSE}
 
@@ -368,8 +301,7 @@ rpt_output.full %<>% left_join(rep_samples, by = c("colony", "species"))
 
 save(rpt_output.full, file = "Data_outputs/behavioural_repeatability_results.RData")
 
-
-# Model checking code
+# Model checking 
 # plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
 # pp_check(bbal_birdis.brm_rpt)
 # 
@@ -553,7 +485,7 @@ dev.off()
 
 ```
 
-### Testing for heritability
+## Testing for heritability
 
 ### * Black-browed albatrosses
 
@@ -1126,10 +1058,7 @@ ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
 ```
 
 
-
-
-
-#### Plot heritability estimates
+### Plot heritability estimates
 
 ```{r plot_heritability}
 
@@ -1188,7 +1117,7 @@ heritability_plot <- ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
   labs(x = "Posterior distribution for heritability (h²)", y = "") 
 
 
-png(filename = "Figures/MS Figures/FIGx_behaviour_heritability.png", width = 10, height = 10, units = "in", res = 900)
+png(filename = "Figures/behaviour_heritability.png", width = 10, height = 10, units = "in", res = 900)
 heritability_plot
 dev.off()
 
@@ -1295,7 +1224,7 @@ save(rep_testing.all, file = "Data_outputs/SUPP_behaviour_rpt_test_Ntrips.RData"
 
 ```
 
-#### Figure SX: Repeatability by repeats
+#### Figure SX: Repeatability by repeat trips
 
 ```{r SUPPLEMENTARY_repeatability_by_repeats_figure}
 
@@ -1701,12 +1630,50 @@ rptplot.seasons
 
 ```
 
-<!-- ## Changes to the approach -->
+# Appendix
 
-<!-- ### Permutation test -->
+```{r foraging_effort_bertille, eval = FALSE}
 
-<!-- I originally conducted a permutation test to examine whether repeatability estimates are greater than expected by chance, under the null hypothesis that individual identity has no consistent effect within or across seasons. This was achieved my shuffling ring labels within seasons, to maintain seasonal structure (so no mixing of behaviours across year) and generate a null distribution: -->
+rep_data %<>% mutate(landings_per_day = landing/duration.days)
 
-<!-- *To assess the statistical significance of repeatability estimates, we performed a permutation test with 1000 iterations. In each iteration, individual identities (`ring`) were randomly reassigned within each season, breaking any consistent among-individual patterns while preserving seasonal structure. The linear mixed-effects model was refitted to each permuted dataset, and repeatability values were recalculated. P-values were computed as the proportion of permuted values greater than or equal to the observed repeatability, for annual, within-season, and between-season components.* -->
+# Get mean landings per day per season per individual
 
-<!-- I ultimately decided to remove this in favour of just assessing the confidence intervals. I think my approach wasn't significantly conservative, and the p values weren't necessarily informative - a mean repeatability of 0.1 might be significantly different to 0, but if the lower bound of the CI is 0.001, I don't think it's of biological interest. I can come back to this and think about cleverer ways to conduct this test but for now I'm going to drop it (particularly as it's computationally intense). -->
+summary_landings <- rep_data %>% group_by(species, colony, ring, season) %>% summarise(mean_landings = mean(landings_per_day))
+
+lmm1 <- lmer(landings_per_day ~ colony + species + (1|ring), data = rep_data)
+
+ggplot(summary_landings, aes(x = factor(season), y = mean_landings, col = colony)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  facet_wrap(~ species) +
+  labs(y = "Mean landings per day of trip") +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank())
+
+
+# Plot random intercepts
+ranefs <- broom.mixed::tidy(lmm1, effects = "ran_vals", conf.int = TRUE)
+ring_ranefs <- ranefs[ranefs$group == "ring", ] %>% rename(ring = level)
+
+## Add colony/species back
+meta <- rep_data %>% select(c(ring, colony, species)) %>% distinct()
+ring_ranefs <- merge(ring_ranefs, meta, by = "ring", all.x = T) %>%
+  mutate(spec_col = paste(species, colony, sep = "_"))
+
+ggplot(ring_ranefs, aes(x = estimate, y = reorder(ring, estimate))) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  facet_wrap(~ spec_col, scales = "free_y") +
+  labs(x = "Random intercept estimate", y = "Ring ID") +
+  theme_bw() +
+  theme(axis.text.y = element_blank())
+
+
+# Get summarised data
+behav.df <- rep_data %>%
+              select(c(species, colony, ring, season, landing, duration.days, duration.hrs, phase))
+
+write.csv(behav.df, file = "Data_outputs/behaviour_summarised.csv", row.names = F)
+
+```
