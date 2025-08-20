@@ -6,24 +6,40 @@ output:
     toc: true
     toc_float: true
     toc_depth: 4
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 **Note:** Naming conventions for files:
-  - Bird Island = birdis
-  - Crozet = cro
-  - Kerguelen = ker
-  - Chlorophyll = chl
-  
+
+-   Bird Island = birdis
+
+-   Crozet= cro
+
+-   Kerguelen = ker
+
+-   Chlorophyll = chl
+
 Inputs:
-  - *species_colony*_individual_trips_summary.RData
-  - ind_meta.RData 
-  - *species_colony*_pedigree.csv
+
+-   *species_colony*\_individual_trips_summary.RData
+
+-   ind_meta.RData
+
+-   *species_colony*\_pedigree.csv
 
 Outputs:
-  - behavioural_repeatability_data.RData
-  - Figure 1
-  - Table 1
-  - Figure SX
+
+-   behavioural_repeatability_data.RData
+
+-   Figure 1, Table 1, Figure SX
+
+-   *species_colony*\_brms_behaviour_repeatability\_*behaviour*.RData
+
+-   *species_colony*\_behaviour_heritability_posteriors.RData
+
+-   behavioural_repeatability_results.RData
 
 ## Set-up
 
@@ -92,10 +108,14 @@ save(rep_data, file = "Data_inputs/behavioural_repeatability_data.RData")
 
 ```
 
-
 ### Sample sizes
 
-We know age effects behaviour, and individuals are recorded at different ages, so this is included in the repeatability models and hence the dataset has been filtered to exclude individuals of unknown age. We don't worry about sex, as each individual can only be one sex. We are also only using individuals with more than one season of data, as otherwise we can't calculate across season repeatability.
+We know age effects behaviour, and individuals are recorded at different
+ages, so this is included in the repeatability models and hence the
+dataset has been filtered to exclude individuals of unknown age. We
+don't worry about sex, as each individual can only be one sex. We are
+also only using individuals with more than one season of data, as
+otherwise we can't calculate across season repeatability.
 
 ```{r sample_sizes}
 
@@ -135,15 +155,26 @@ kable(trips.table, format = "html",
 
 # Testing for repeatablity
 
-This analysis looks at repeatability in foraging behaviours. I am looking at five behavioural variables:
+This analysis looks at repeatability in foraging behaviours. I am
+looking at five behavioural variables:
 
 1.  *duration.hrs* = Duration of the foraging trip in hours
-2.  *transitions* = Number of transitions between rest and flight and vice versa
+2.  *transitions* = Number of transitions between rest and flight and
+    vice versa
 3.  *transit_time.pct* = Percentage of foraging trip spent in flight
 4.  *rest_time.pct* = Percentage of foraging trip spent in rest
-5.  *transit_to_rest.ratio* = Ratio of flight to rest time; \>1 = more flight than rest, \<1 = more rest than flight
+5.  *transit_to_rest.ratio* = Ratio of flight to rest time; \>1 = more
+    flight than rest, \<1 = more rest than flight
 
-All of the predictor values have positive-skewed distributions with heavy tails. As I'm not interested in predictions, a simple and stable approach to dealing with this is simply to **log-transform** $y$ in each model. The distribution of *rest_time.pct* is a little problematic - the values are right skewed with a very long tail towards high values and lots of values around 0. Possibly a beta model would be a better fit here. But for ease of computation, I'm pursuing the log transformation as the variances don't look worryingly different between this and a beta model.
+All of the predictor values have positive-skewed distributions with
+heavy tails. As I'm not interested in predictions, a simple and stable
+approach to dealing with this is simply to **log-transform** $y$ in each
+model. The distribution of *rest_time.pct* is a little problematic - the
+values are right skewed with a very long tail towards high values and
+lots of values around 0. Possibly a beta model would be a better fit
+here. But for ease of computation, I'm pursuing the log transformation
+as the variances don't look worryingly different between this and a beta
+model.
 
 ```{r calculating_repeatability, eval = FALSE}
 
@@ -308,7 +339,6 @@ save(rpt_output.full, file = "Data_outputs/behavioural_repeatability_results.RDa
 # pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
 
 ```
-
 
 ### Repeatability results
 
@@ -487,9 +517,9 @@ dev.off()
 
 ## Testing for heritability
 
-### * Black-browed albatrosses
+### \* Black-browed albatrosses
 
-#### * Bird Island
+#### \* Bird Island
 
 ```{r bbal_birdis_behaviour_heritability }
 
@@ -675,10 +705,9 @@ ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
 
 ```
 
+### \*\* Wandering albatrosses
 
-### ** Wandering albatrosses
-
-#### * Crozet
+#### \* Crozet
 
 ```{r waal_cro_behaviour_heritability }
 
@@ -866,7 +895,7 @@ ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
 
 ```
 
-#### * Bird Island
+#### \* Bird Island
 
 ```{r waal_birdis_behaviour_heritability }
 
@@ -1057,7 +1086,6 @@ ggplot(posteriors.all, aes(x = h2_post, y = behaviour)) +
 
 ```
 
-
 ### Plot heritability estimates
 
 ```{r plot_heritability}
@@ -1127,11 +1155,18 @@ dev.off()
 
 ### How does repeatability change with the number of individual repeats?
 
-I have a lot of variation in the number of seasons' worth of data are available per individual. To test whether this might be affecting my estimates, here I have rerun the analyses using data that have been sampled to individuals with more than or equal 2, 3, or 4 trip repeats (within a season).
+I have a lot of variation in the number of seasons' worth of data are
+available per individual. To test whether this might be affecting my
+estimates, here I have rerun the analyses using data that have been
+sampled to individuals with more than or equal 2, 3, or 4 trip repeats
+(within a season).
 
-To speed things up, I'm calculating repeatability using simple linear model versions of the brms models, as I'm not concerned about uncertainty here.
+To speed things up, I'm calculating repeatability using simple linear
+model versions of the brms models, as I'm not concerned about
+uncertainty here.
 
-Repeatability values stabilise at >=3 repeats per individual-year so ensuring this filter is included in the main analysis.
+Repeatability values stabilise at \>=3 repeats per individual-year so
+ensuring this filter is included in the main analysis.
 
 ```{r SUPPLEMENTARY_repeatability_by_repeats_models}
 
@@ -1447,7 +1482,10 @@ rptplot.seasons
 
 ### Does repeatability depend on breeding phase?
 
-Behaviour may be very different between incubation and brooding. Although I account for breeding phase in my models, it's important to check whether there are major differences between the breeding phases that could preclude fitting them in a single model.
+Behaviour may be very different between incubation and brooding.
+Although I account for breeding phase in my models, it's important to
+check whether there are major differences between the breeding phases
+that could preclude fitting them in a single model.
 
 ```{r supplementary_repeatability_by_phase}
 

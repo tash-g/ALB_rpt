@@ -8,6 +8,30 @@ output:
     toc_depth: 4
 ---
 
+**Note:** Naming conventions for files:
+
+-   Bird Island = birdis
+
+-   Crozet= cro
+
+-   Kerguelen = ker
+
+-   Chlorophyll = chl
+
+Inputs:
+
+-   *species_colony*\_heritability_posteriors.RData
+
+-   all_posteriors_spatial_heritability.RData
+
+-   *species_colony*\_habitat_pref_heritability_posteriors.RData
+
+Outputs:
+
+-   Figure 6, Table 6
+
+# Set-up
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
@@ -36,7 +60,6 @@ col_slope <- "#0d4e3a"
 
 
 ```
-
 
 ```{r combine_posteriors}
 
