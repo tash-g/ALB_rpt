@@ -52,6 +52,7 @@ select <- dplyr::select
 spec_col <- "bbal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
 
 load(paste0("Data_outputs/", spec_col, "_available_pnts_population_level.RData"))
+pnts_all <- all_pnts
 
 # Set parameters
 years = unique(year(pnts_all$date_hourly))

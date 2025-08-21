@@ -6,6 +6,9 @@
 ##
 ## ---------------------------
 ##
+## Dependencies:
+## - extract_foraging_trips -> Labels and processes GPS data
+##
 ## Inputs:
 ##   - {species}_{colony}_gps_labelled_subset.RData 
 ##   - breeding_dates.RData
@@ -53,12 +56,11 @@ select <- dplyr::select
 
 # Load the data ----
 
+# Set manually
 spec_col <- "bbal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
 
 # Load the GPS data
-gps_files <- list.files("Data_inputs/", pattern = paste0(spec_col, "_gps"))
-my_file <- gps_files[grepl("labelled", gps_files)]
-
+my_file <- list.files("Data_inputs/", pattern = paste0(spec_col, "_gps_labelled"))
 my_gps <- loadRData(paste0("Data_inputs/", my_file)) 
 
 x <- my_gps %>% group_by(ring) %>% summarise(n_seasons = n_distinct(season))

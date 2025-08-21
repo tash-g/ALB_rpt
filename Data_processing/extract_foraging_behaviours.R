@@ -6,6 +6,9 @@
 ##
 ## ---------------------------
 ##
+## Dependencies:
+##   - extract_foraging_trips -> Splits GLS & GPS datasets into foraging trips
+##
 ## Inputs:
 ##   - {species}_{colony}_gls_labelled.RData
 ##   - {species}_{colony}_gps_labelled.RData
