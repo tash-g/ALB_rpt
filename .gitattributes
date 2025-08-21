@@ -1,3 +1,6 @@
 .RData filter=lfs diff=lfs merge=lfs -text
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.RData filter=lfs diff=lfs merge=lfs -text
+Data_inputs/waal_cro_sst-bathy-chla_data_population_level.RData filter=lfs diff=lfs merge=lfs -text
+Data_inputs/waal_birdis_gls_1999-2023.RData filter=lfs diff=lfs merge=lfs -text
+Data_inputs/waal_birdis_gls_labelled.RData filter=lfs diff=lfs merge=lfs -text
