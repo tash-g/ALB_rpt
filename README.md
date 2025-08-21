@@ -4,30 +4,39 @@ Repository for repeatability analyses.
 
 ## Scripts
 
-A short description of each script is given below.
+A short description of each script is given below. Briefly, the workflow is as follows:
+
+1.  Process raw GPS/GLS data into labelled trips;
+2.  Extract foraging behaviors and create individual trip summaries;
+3.  Sample points for habitat analyses and add environmental variables;
+4.  Run analyses.
 
 ### Data processing
 
 These scripts generate the core data files used to run the analyses. They are listed in order of usage.
 
 -   **extract_trips_generalised**: Extracts foraging trips from the original GPS and GLS datasets. This script processes the raw tracking data into labelled trip-level datasets that are used to extract finer-scale behaviour in the 'extract_foraging_behaviours' script.
-    -   *Inputs*:`{species}_{colony}_gls_{dates}.RData`; `{species}_{colony}_gls_labelled_{dates}.RData`
+    -   *Inputs*: `{species}_{colony}_gls_{dates}.RData`; `{species}_{colony}_gls_labelled_{dates}.RData`
     -   *Outputs*: `{species}_{colony}_gps_labelled.RData`; `{species}_{colony}_gls_labelled.RData`
 -   **extract_foraging_behaviours**: Uses the labelled GPS and GLS trips to identify behaviours during foraging trips (e.g., wet–dry bouts, speed-based movement bouts). Also merges in demographic and breeding information at the individual and pair level.
+    -   *Inputs*: `{species}_{colony}_gps_labelled.RData`; `{species}_{colony}_gls_labelled.RData`; `{BAS/Chize}_demo_complete.RData`
     -   *Outputs*: `{species}_{colony}_individual_trips_summary.RData`
 -   **isolate_foraging_sample_points:** Labels GPS tracks with behavioural states, extracts foraging components, and samples available (pseudo-absence) locations for habitat-use analyses.
     -   *Inputs*: `{species}_{colony}_gps_labelled.RData`; `breeding_dates.RData` ; `ind_meta.RData`
     -   *Outputs*: `{species}_{colony}_available_pnts_population_level.RData`
 -   **extract_environment**: Extracts environmental variables (sea surface temperature, bathymetry, chlorophyll-a) and matches them to the sampled GPS points for population-level analyses.
+    -   *Inputs*: `{species}_{colony}_available_pnts_population_level.RData`
     -   *Outputs*: `{species}_{colony}_sst-bathy-chla_data_population_level.RData`
 
 ### Data analyses
 
+These scripts are used to run the main analyses in the text. They are written as RMarkdown files to promote usability and to add important information. They are listed in the order they are presented in the manuscript.
+
 ## Data inputs
 
-These are the raw and processed datasets used in the above scripts. Files are listed in alphabetical order by their description suffix (i.e. ignoring leading species/colony demarker).
+These are the raw and processed datasets used as inputs to the scripts listed above. Files are listed in alphabetical order by their description suffix (i.e. ignoring leading species/colony demarker). Other files are produced during the analyses but are not presented here.
 
--   `{BAS/Chize}_all_demo.RData`: Demographic and breeding information for individuals and pairs.
+-   `{BAS/Chize}_demo_complete.RData`: Demographic and breeding information for individuals and pairs.
 
     -   *bird1*, *bird2*: Unique IDs for the pair members;
     -   *season*: Breeding season;
