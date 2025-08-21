@@ -1,6 +1,20 @@
-# ALB_rpt
+# **No individual or heritable signal in foraging of wide-ranging albatrosses**
 
-Repository for repeatability analyses.
+Natasha Gillies, Richard A. Phillips, Henri Weimerskirch, Jonathan Potts, Denis Réale, Alastair J. Wilson, Frédéric Angelier, Christophe Barbraud, Ashley Bennison, Karine Delord, Prescillia Lemesle, Samuel Peroteau, Andrew G. Wood, José C. Xavier, Samantha C. Patrick.
+
+## Overview
+
+This repository contains scripts and data to recreate the main results and figures of the following in-prep manuscript:
+
+No individual or heritable signal in foraging of wide-ranging albatrosses. Gillies N, Phillips RA, Weimerskirch H, Potts J, Réale D, Wilson AJ, Angelier F, Barbraud C, Bennison A, Delord K, Lemesle P, Peroteau S, Wood AG, Xavier JC, Patrick SC
+
+## Environment
+
+-   R version: 4.5.0 (2025-04-11 ucrt, “How About a Twenty-Six”)
+
+-   Platform: x86_64-w64-mingw32 (Windows)
+
+-   Key R packages required**:** `adehabitatHR`, `betareg`, `brms`, `corrplot`, `data.table`, `DHARMa`, `dplyr`, `ecmwfr`, `emmeans`, `ggplot2`, `ggpubr`, `ggridges`, `glmmTMB`, `gridExtra`, `igraph`, `kableExtra`, `lubridate`, `MasterBayes`, `magrittr`, `MCMCglmm`, `MASS`, `momentuHMM`, `nadiv`, `pheatmap`, `purrr`, `raster`, `rnaturalearth`, `reticulate`, `sf`, `stringr`, `terra`, `tidyr`, `readxl`
 
 ## Scripts
 
@@ -32,9 +46,22 @@ These scripts generate the core data files used to run the analyses. They are li
 
 These scripts are used to run the main analyses in the text. They are written as RMarkdown files to promote usability and to add important information. They are listed in the order they are presented in the manuscript.
 
+-   **1_RPT_foraging_effort.Rmd**: Analyses for repeatability of foraging effort. Fits models to quantify the consistency of individual foraging behaviour across trips and estimate heritability using the pedigree information.
+    -   *Inputs*: `{species}_{colony}_individual_trips_summary.RData`; `ind_meta.RData`; `{species}_{colony}_pedigree.csv`
+    -   *Outputs*: Figure 1, Table 1, Figure SX; `behavioural_repeatability_data.RData`; `behavioural_repeatability_results.RData`; `{species}_{colony}_brms_behaviour_repeatability_{behaviour}.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`
+-   **2_RPT_spatial.Rmd**: Analyses testing for spatial repeatability by examining consistency in foraging bearings and space use, using Bhattacharyya’s affinity.
+    -   *Inputs*: `{species}_{colony}_gps_labelled.RData`; `{species}_{colony}_pedigree.csv`
+    -   *Outputs*: Figures 2, 3, SX, & Sx; `all_gps.RData`; `{species}_{colony}_ba_comparison.RData`; `ba_means.RData`; `ba_model_summary.RData`; `bearings_data.RData`; `{species}_{colony}_bearing_differences.RData`; `bearing_means.RData`; `bearing_models_summary.RData`
+-   **3_RPT_habitat_preference.Rmd**: Analyses for repeatability in habitat use and preference by individual birds. Quantifies individual consistency in habitat selection and links environmental covariates to usage patterns.
+    -   *Inputs*: `{species}_{colony}_sst-bathy-chla_data_population_level.RData`; `{species}_{colony}_pedigree.csv`
+    -   *Outputs*: Figures 4 & 5, Tables 4 & 5; `{species}_{colony}_glmm_{between/within}_{environment}.RData`; `{species}_{colony}_habitat_data.RData`; `{species}_{colony}_habitat_slopes.RData`; `{species}_{colony}_habitat_used_ranef.RData`; `{species}_{colony}_habitat_used_variances.RData`
+-   **4_RPT_heritability.Rmd**: Combines heritability estimates from other analyses, generates summary plots, and compiles a table of results.
+    -   *Inputs*: `all_posteriors_spatial_heritability.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`; `{species}_{colony}_habitat_pref_heritability_posteriors.RData`
+    -   *Outputs*: Figure 6, Table 6
+
 ## Data inputs
 
-These are the raw and processed datasets used as inputs to the scripts listed above. Files are listed in alphabetical order by their description suffix (i.e. ignoring leading species/colony demarker). Other files are produced during the analyses but are not presented here.
+These are the raw and processed datasets used as inputs to the scripts listed above. Files are listed in alphabetical order by their description suffix (i.e. ignoring leading species/colony demarker). Other files produced during the analyses are not presented here.
 
 -   `{BAS/Chize}_demo_complete.RData`: Demographic and breeding information for individuals and pairs.
 
@@ -137,6 +164,13 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *sex*: Sex of the bird;
     -   *species*: Species code;
     -   *birthYr*: Hatch year of the bird.
+
+-   `{species}_{colony}_pedigree.csv`: Pedigree information for individuals used in repeatability and heritability analyses. When sex was unknown, dams and sires were randomly assigned.
+
+    -   *id*: Unique identifier for each individual bird;
+    -   *dam*: Mother’s unique ID;
+    -   *sire*: Father’s unique ID;
+    -   *Year*: Year of hatching;
 
 -   `{species}_{colony}_sst-bathy-chla_data_population_level.RData`: GPS points with environmental variables appended. Each row corresponds to a used or available location with matched environmental data.
 
