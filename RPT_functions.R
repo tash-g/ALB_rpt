@@ -854,6 +854,25 @@ calculate_bearing_diffs_sex <- function(df,
 
 
 
+calc_speed <- function(mydf) {
+  
+  n = nrow(mydf)
+  
+  mydf$dist_next <- c(gcd.hf(mydf$longitude[2:n],
+                             mydf$latitude[2:n],
+                             mydf$longitude[1:(n-1)],
+                             mydf$latitude[1:(n-1)]),NA)
+  
+  dt = c(as.numeric(difftime(mydf$datetime[2:n], mydf$datetime[1:(n-1)], 
+                             units = "secs")), NA)
+  mydf$calc_speed <- mydf$dist_next*1000/dt
+  
+  return(mydf$calc_speed)
+  
+}
+
+
+
 
 calculate_within_bearing_diffs.comparison <- function(df, bearing_col_name, output_col_name = "bearing_diff") {
   
@@ -964,6 +983,26 @@ deg2rad <- function(deg) {(deg * pi) / (180)}
 
 
 rad2deg <- function(rad) {(rad * 180) / (pi)}
+
+
+gcd.hf <- function(long1, lat1, long2, lat2) { 
+  R <- 6371 # Earth mean radius [km]
+  deg2rad <- function(deg) return(deg*pi/180)
+  long1 <- deg2rad(long1)
+  long2 <- deg2rad(long2)
+  lat1 <- deg2rad(lat1)
+  lat2 <- deg2rad(lat2)
+  delta.long <- (long2 - long1)
+  delta.lat <- (lat2 - lat1)
+  a <- sin(delta.lat/2)^2 + cos(lat1) * cos(lat2) * sin(delta.long/2)^2
+  c <- 2 * asin(min(1,sqrt(a)))
+  
+  coo2 <- function(x){2 * asin(min(1,sqrt(x)))}
+  c <- lapply(a, coo2)
+  c <- do.call("c", c)
+  d = R * c
+  return(d) # Distance in km
+}
 
 
 
