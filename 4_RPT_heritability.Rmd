@@ -8,16 +8,6 @@ output:
     toc_depth: 4
 ---
 
-**Note:** Naming conventions for files:
-
--   Bird Island = birdis
-
--   Crozet= cro
-
--   Kerguelen = ker
-
--   Chlorophyll = chl
-
 Inputs:
 
 -   *species_colony*\_heritability_posteriors.RData

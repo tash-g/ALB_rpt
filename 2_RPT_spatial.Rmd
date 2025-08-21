@@ -8,21 +8,15 @@ output:
     toc_depth: 4
 ---
 
-**Note:** Naming conventions for files:
-
--   Bird Island = birdis
-
--   Crozet= cro
-
--   Kerguelen = ker
-
 Inputs:
 
--   all_gps_data.Rdata
+-   *species_colony*\_gps_labelled.RData
 
 Outputs:
 
 -   Figure 2, Figure 3, Figure Sx, Figure Sx
+
+-   all_gps.RData
 
 -   bearings_data.Rdata
 
@@ -40,7 +34,7 @@ Outputs:
 
 This document contains the results of the spatial repeatability section of the repeatability project. It uses outputs from the main R script, so make sure those outputs are up-to-date before running the markdown code.
 
-## Set up
+## Set-up
 
 ```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
@@ -74,61 +68,7 @@ col_within <- "#0b3860"
 
 ```
 
-## Sample sizes for colony & species
-
-```{r sample_sizes}
-### Sample sizes
-
-load("Data_outputs/all_gps_data.RData")
-
-trips.table <- all_gps.df %>% group_by(species, colony, ring, season) %>% summarise(n_trips = n_distinct(boutID)) %>%
-  filter(n_trips > 1) %>% group_by(species, colony,season) %>% summarise(n_birds = n_distinct(ring)) %>% 
-  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
-         colony = ifelse(colony == "kerguelen", "Kerguelen",
-                          ifelse(colony == "crozet", "Crozet", "Bird Island"))) %>%
-  relocate(species, .before = colony) %>%
-  rename(Species = species, Colony = colony, Season = season, `N birds` = n_birds)
-
-trips_wide <- trips.table %>%
-  arrange(Season, Species, Colony) %>%
-  pivot_wider(names_from = Season, values_from = `N birds`, values_fill = 0)
-
-kable(trips_wide, format = "html", 
-             caption = 'Table 1. Sample sizes for each species, colony, and year, showing the number of individuals for which we have more than 1 foraging trip.') %>%
-  collapse_rows(columns = c(1)) %>%
-  row_spec(2, extra_css = "border-bottom: 1px solid;") %>%
-  kable_classic(font_size = 9)
-
-
-# How many birds have > 1 year of data?
-
-seasons_table <- all_gps.df %>%
-  group_by(colony, species, ring) %>%
-  summarise(n_seasons = n_distinct(season)) %>%
-  filter(n_seasons > 1) %>%
-  group_by(colony, species) %>%
-  summarise(n_birds = n_distinct(ring)) %>%
-  relocate(species, colony, n_birds) %>%
-  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
-         colony = case_when(
-           colony == "birdis" ~ "Bird Island",
-           colony == "crozet" ~ "Crozet",
-           colony == "kerguelen" ~ "Kerguelen" )) %>%
-  rename(Species = species, Colony = colony, Individuals = n_birds) %>%
-  arrange(Species)
-
-kable(seasons_table, format = "html", 
-             caption = 'Table 2. Number of birds for each colony and species where trips are recorded in > 1 season.') %>%
-  collapse_rows(columns = c(1, 2)) %>%
-  kable_classic(font_size = 12)
-
-```
-
-The distribution of repeats is quite patchy. Crozet WAAL have the most years of repeats, mostly falling between 2011 and 2019 (though with lots in 2024). Bird Island WAAL are quite sparsely distribution, as are the Bird Island BBAL, and the Kerguelen BBAL are mostly in 2012.
-
-Because of this, in the across-individuals, within-years analyses I have filtered out years where only one individual is represented.
-
-### Foraging movements
+## Foraging movements
 
 #### Figure SX: Foraging tracks for all populations
 
@@ -139,13 +79,15 @@ Because of this, in the across-individuals, within-years analyses I have filtere
 bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
 cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
 
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_crozet", "waal_birdis")
+spec_col <- c("bbal_ker", "bbal_birdis", "waal_cro", "waal_birdis")
 all_gps = vector(mode = "list", length = 4)
 
 for (i in 1:length(spec_col)) {
   
-  gps_file <- list.files("Data_inputs/", pattern = paste0(spec_col[i], "_gps"))
-  my_gps <- loadRData(paste0("Data_inputs/", gps_file)) 
+  my_gps <- loadRData(paste0("Data_inputs/", spec_col[i], "_gps_labelled_subset.RData"))
+  
+  # gps_file <- list.files("Data_inputs/", pattern = paste0(spec_col[i], "_gps"))
+  # my_gps <- loadRData(paste0("Data_inputs/", gps_file)) 
   
   my_gps %<>%
   mutate(ID = paste0(ring, "_", season, "_", boutID),
@@ -160,7 +102,6 @@ for (i in 1:length(spec_col)) {
     mutate(n_trips = n_distinct(ID)) %>%
     filter(n_trips > 1) %>%
     select(-n_trips)
-  
   
   ## Add species/colony info in
   my_gps %<>%
@@ -182,8 +123,6 @@ world <- ne_countries(scale = "medium", returnclass = "sf")
 proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 
 # Loop through data
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_crozet", "waal_birdis")
-
 for (i in 1:length(spec_col)) {
   
   # Set projections (use same for Ker + Cro)
@@ -237,10 +176,10 @@ for (i in 1:length(spec_col)) {
     scale_colour_viridis_d() +
     annotate("point", shape = 17, size = 3, (colony.df$coords.x1 + 100), colony.df$coords.x2) +
     labs(caption = stringr::str_wrap( paste0(
-                          ifelse(my_species == "bba", "Black-browed albatrosses", "Wandering albatrosses"),
+                          ifelse(my_species == "bbal", "Black-browed albatrosses", "Wandering albatrosses"),
                           " at ", 
                           ifelse(my_colony == "birdis", "Bird Island",
-                                 ifelse(my_colony == "crozet", "Crozet", "Kerguelen"))))) +
+                                 ifelse(my_colony == "cro", "Crozet", "Kerguelen"))))) +
     theme(panel.background = element_rect(fill = "white"),
           panel.grid.major = element_line(colour = "grey80"),
           panel.border = element_rect(colour = "black", fill = NA),
@@ -265,7 +204,6 @@ for (i in 1:length(spec_col)) {
 
 ```{r gps_tracks.plot, fig.height=8, fig.width=10}
 
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_crozet", "waal_birdis")
 plot_files <- list.files(path = "Data_outputs/R objects/", pattern = "gps_plot")
 plot_paths <- paste0("Data_outputs/R objects/", plot_files)
 
@@ -273,7 +211,7 @@ for (file in plot_paths) {
   load(file)
 }
 
-#png("Figures/MS Figures/FIG2_all_gps_tracks.png", width = 10, height = 10, units = "in", res = 700)
+#png("Figures/MS Figures/FIGSX_all_gps_tracks.png", width = 10, height = 10, units = "in", res = 700)
 ggarrange(bba_kerguelen_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')), 
           bba_birdis_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
           waal_crozet_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
@@ -299,12 +237,12 @@ load("Data_outputs/all_gps_data.RData")
 # Common parameters
 proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
 world <- ne_countries(scale = "medium", returnclass = "sf")
-spec_col <- c("bba_kerguelen", "bba_birdis", "waal_crozet", "waal_birdis")
+spec_col <- c("bbal_ker", "bbal_birdis", "waal_cro", "waal_birdis")
 
-targets <- c("bba_birdis_1456598", "bba_birdis_1441460", "bba_birdis_1320517",
-             "bba_kerguelen_CF27498", "bba_kerguelen_CF39444", "bba_kerguelen_CF31429",
+targets <- c("bbal_birdis_1456598", "bbal_birdis_1441460", "bbal_birdis_1320517",
+             "bbal_ker_CF27498", "bbal_ker_CF39444", "bbal_ker_CF31429",
              "waal_birdis_5145048", "waal_birdis_5144589", "waal_birdis_5132544",
-             "waal_crozet_BS6563", "waal_crozet_BS18853", "waal_crozet_BS21258")
+             "waal_cro_BS6563", "waal_cro_BS18853", "waal_cro_BS21258")
 
 all_gps.df %<>% mutate(plotID = paste(species, colony, ring, sep = "_"))
 
@@ -354,10 +292,10 @@ for (i in 1:length(spec_col)) {
       geom_path(aes(x = coords.x1, y = coords.x2, colour = ring), size = 1, dat = track.proj.df) +
       scale_colour_viridis_d(name = NULL) +
       labs(caption = stringr::str_wrap( paste0(
-                          ifelse(my_species == "bba", "Black-browed albatrosses", "Wandering albatrosses"),
+                          ifelse(my_species == "bbal", "Black-browed albatrosses", "Wandering albatrosses"),
                           " at ", 
                           ifelse(my_colony == "birdis", "Bird Island",
-                                 ifelse(my_colony == "crozet", "Crozet", "Kerguelen"))))) +
+                                 ifelse(my_colony == "cro", "Crozet", "Kerguelen"))))) +
       theme(panel.background = element_rect(fill = "white"), 
             panel.grid.major = element_line(colour = "grey80"),
             panel.border = element_rect(colour = "black", fill = NA),
@@ -377,7 +315,7 @@ for (i in 1:length(spec_col)) {
   
 }
 
-#png("Figures/MS Figures/FIG3_spatial_repeatability_example_tracks.png", width = 10, height = 10, units = "in", res = 700)
+#png("Figures/MS Figures/FIGSX_spatial_repeatability_example_tracks.png", width = 10, height = 10, units = "in", res = 700)
 ggarrange(bba_kerguelen_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')), 
           bba_birdis_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
           waal_crozet_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
@@ -2023,6 +1961,57 @@ dtw.plot_bySex
 ##### Overall
 
 Looking at the outputs, there is hardly any difference between the analyses where individuals are grouped by sex and when they are not, at least for the bearing differences, so I think I'm safe to continue. I'm not interested in the effect of sex *per se*, so there's no reason to go deeper into this.
+
+
+## Sample sizes for colony & species
+
+```{r sample_sizes}
+### Sample sizes
+
+load("Data_outputs/all_gps_data.RData")
+
+trips.table <- all_gps.df %>% group_by(species, colony, ring, season) %>% summarise(n_trips = n_distinct(boutID)) %>%
+  filter(n_trips > 1) %>% group_by(species, colony,season) %>% summarise(n_birds = n_distinct(ring)) %>% 
+  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
+         colony = ifelse(colony == "kerguelen", "Kerguelen",
+                          ifelse(colony == "crozet", "Crozet", "Bird Island"))) %>%
+  relocate(species, .before = colony) %>%
+  rename(Species = species, Colony = colony, Season = season, `N birds` = n_birds)
+
+trips_wide <- trips.table %>%
+  arrange(Season, Species, Colony) %>%
+  pivot_wider(names_from = Season, values_from = `N birds`, values_fill = 0)
+
+kable(trips_wide, format = "html", 
+             caption = 'Table 1. Sample sizes for each species, colony, and year, showing the number of individuals for which we have more than 1 foraging trip.') %>%
+  collapse_rows(columns = c(1)) %>%
+  row_spec(2, extra_css = "border-bottom: 1px solid;") %>%
+  kable_classic(font_size = 9)
+
+
+# How many birds have > 1 year of data?
+
+seasons_table <- all_gps.df %>%
+  group_by(colony, species, ring) %>%
+  summarise(n_seasons = n_distinct(season)) %>%
+  filter(n_seasons > 1) %>%
+  group_by(colony, species) %>%
+  summarise(n_birds = n_distinct(ring)) %>%
+  relocate(species, colony, n_birds) %>%
+  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
+         colony = case_when(
+           colony == "birdis" ~ "Bird Island",
+           colony == "crozet" ~ "Crozet",
+           colony == "kerguelen" ~ "Kerguelen" )) %>%
+  rename(Species = species, Colony = colony, Individuals = n_birds) %>%
+  arrange(Species)
+
+kable(seasons_table, format = "html", 
+             caption = 'Table 2. Number of birds for each colony and species where trips are recorded in > 1 season.') %>%
+  collapse_rows(columns = c(1, 2)) %>%
+  kable_classic(font_size = 12)
+
+```
 
 ## Appendix
 

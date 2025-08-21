@@ -11,16 +11,6 @@ editor_options:
     wrap: 72
 ---
 
-**Note:** Naming conventions for files:
-
--   Bird Island = birdis
-
--   Crozet= cro
-
--   Kerguelen = ker
-
--   Chlorophyll = chl
-
 Inputs:
 
 -   *species_colony*\_individual_trips_summary.RData
