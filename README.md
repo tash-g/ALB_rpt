@@ -14,7 +14,7 @@ No individual or heritable signal in foraging of wide-ranging albatrosses. Gilli
 
 -   Platform: x86_64-w64-mingw32 (Windows)
 
--   Key R packages required**:** `adehabitatHR`, `betareg`, `brms`, `corrplot`, `data.table`, `DHARMa`, `dplyr`, `ecmwfr`, `emmeans`, `ggplot2`, `ggpubr`, `ggridges`, `glmmTMB`, `gridExtra`, `igraph`, `kableExtra`, `lubridate`, `MasterBayes`, `magrittr`, `MCMCglmm`, `MASS`, `momentuHMM`, `nadiv`, `pheatmap`, `purrr`, `raster`, `rnaturalearth`, `reticulate`, `sf`, `stringr`, `terra`, `tidyr`, `readxl`
+-   Key R packages required: `adehabitatHR`, `betareg`, `brms`, `corrplot`, `data.table`, `DHARMa`, `dplyr`, `ecmwfr`, `emmeans`, `ggplot2`, `ggpubr`, `ggridges`, `glmmTMB`, `gridExtra`, `igraph`, `kableExtra`, `lubridate`, `MasterBayes`, `magrittr`, `MCMCglmm`, `MASS`, `momentuHMM`, `nadiv`, `pheatmap`, `purrr`, `raster`, `rnaturalearth`, `reticulate`, `sf`, `stringr`, `terra`, `tidyr`, `readxl`
 
 ## Scripts
 
@@ -24,6 +24,10 @@ A short description of each script is given below. Briefly, the workflow is as f
 2.  Extract foraging behaviors and create individual trip summaries;
 3.  Sample points for habitat analyses and add environmental variables;
 4.  Run analyses.
+
+### Functions
+
+-   **RPT_functions.R**: Contains custom functions used throughout the workflow for data processing, behavioural extraction, habitat sampling, and repeatability analyses. This script is sourced by other R and RMarkdown scripts as needed.
 
 ### Data processing
 
