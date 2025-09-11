@@ -63,6 +63,15 @@ loadRData <- function(fileName){
 
 # * HERITABILITY FUNCTIONS * ----------------------------------------------
 
+extractVar <- function(model_draws, param_name) {
+  
+  V_cos = model_draws[[paste0("sd_", param_name, "__cosb_Intercept")]]^2
+  V_sin = model_draws[[paste0("sd_", param_name, "__sinb_Intercept")]]^2
+  
+  V_out = V_cos + V_sin
+}
+
+
 get_ancestors <- function(ids, pedigree) {
   all_ids <- ids
   new_ids <- ids
@@ -84,6 +93,39 @@ get_ancestors <- function(ids, pedigree) {
   return(unique(all_ids))
 }
 
+
+make_Amat <- function(focal_data, pedigree_df) {
+
+  focal_data$ring <- as.character(focal_data$ring)
+  
+  # Extract IDs from model data and pedigree
+  model_ids <- unique(focal_data$ring)
+  
+  # First prune pedigree
+  ped_ids_needed <- get_ancestors(model_ids, pedigree_df)
+  pedigree_pruned <- pedigree_df[pedigree_df$id %in% ped_ids_needed, ]
+  
+  # Add missing IDs as founders
+  missing_ids <- setdiff(model_ids, pedigree_pruned$id)
+  if(length(missing_ids) > 0) {
+    founders <- data.frame(id = missing_ids, dam = NA, sire = NA)
+    pedigree_extended <- rbind(pedigree_df, founders)
+  } else {
+    pedigree_extended <- pedigree_df
+  }
+  
+  # Prune again with extended pedigree
+  ped_ids_needed <- get_ancestors(model_ids, pedigree_extended)
+  pedigree_pruned <- pedigree_extended[pedigree_extended$id %in% ped_ids_needed, ]
+  
+  # Build the additive genetic relationship matrix
+  ped <- pedigree_pruned
+  names(ped) <- c("animal", "dam", "sire")
+  ped <- orderPed(ped)
+  Amat <- as.matrix(nadiv::makeA(ped))
+  
+  return(Amat)
+}
 
 # * MODEL DIAGNOSES * -----------------------------------------------------
 
@@ -126,7 +168,86 @@ make_plot <- function(df) {
 
 # * REPEATABILITY CALCULATIONS * ------------------------------------------
 
-calc_rpt_brms <- function(brm_model, data, x_mean) {
+calc_rpt_brms_VM <- function(brm_model) {
+  # Extract posterior draws
+  posterior <- as_draws_df(brm_model)
+  
+  # Extract SDs of random effects and kappa
+  sd_ring         <- posterior$sd_ring__Intercept
+  sd_ring_season  <- posterior$sd_ring_season__Intercept
+  sd_season       <- posterior$sd_season__Intercept
+  kappa           <- posterior$kappa
+  
+  # Approximate variance on circular scale
+  var_ring        <- 2 * (1 - exp(-0.5 * sd_ring^2))
+  var_ring_season <- 2 * (1 - exp(-0.5 * sd_ring_season^2))
+  var_season      <- 2 * (1 - exp(-0.5 * sd_season^2))
+  var_resid       <- 2 * (1 - exp(-0.5 / kappa))
+  
+  # Within-season variance (ring + ring_season)
+  var_within <- var_ring + var_ring_season
+  
+  # Total variance
+  total_var <- var_ring + var_ring_season + var_season + var_resid
+  
+  # Repeatabilities
+  rpt_within  <- var_within / total_var
+  rpt_across  <- var_ring / total_var
+  
+  # Combine into tibble with posterior draws
+  result <- tibble(
+    var_ring        = var_ring,
+    var_ring_season = var_ring_season,
+    var_season      = var_season,
+    var_resid       = var_resid,
+    rpt_within      = rpt_within,
+    rpt_across      = rpt_across
+  )
+  
+  return(result)
+}
+
+
+calc_rpt_brms_VM_waBI <- function(brm_model) {
+  # Extract posterior draws
+  posterior <- as_draws_df(brm_model)
+  
+  # Extract SDs of random effects and kappa
+  sd_ring_season  <- posterior$sd_ring_season__Intercept
+  sd_season       <- posterior$sd_season__Intercept
+  kappa           <- posterior$kappa
+  
+  # Approximate variance on circular scale
+  var_ring_season <- 2 * (1 - exp(-0.5 * sd_ring_season^2))
+  var_season      <- 2 * (1 - exp(-0.5 * sd_season^2))
+  var_resid       <- 2 * (1 - exp(-0.5 / kappa))
+  
+  # Within-season variance (ring + ring_season)
+  var_within <- var_ring_season
+  
+  # Total variance
+  total_var <- var_ring_season + var_season + var_resid
+  
+  # Repeatabilities
+  rpt_within  <- var_within / total_var
+
+  # Combine into tibble with posterior draws
+  result <- tibble(
+    var_ring        = NA,
+    var_ring_season = var_ring_season,
+    var_season      = var_season,
+    var_resid       = var_resid,
+    rpt_within      = rpt_within,
+    rpt_across      = NA
+  )
+  
+  return(result)
+}
+
+
+
+
+calc_rpt_brms_slope <- function(brm_model, data, x_mean) {
   # Extract posterior draws as dataframe
   posterior <- as_draws_df(brm_model)
   
@@ -188,6 +309,30 @@ get_rnd_effects <- function(mod_fit, hab_var) {
 }
 
 
+
+repeat_func <- function(fit) {
+  vc <- as.data.frame(VarCorr(fit))
+  var_across <- vc[vc$grp == "ID", "vcov"]
+  var_within <- vc[vc$grp == "ID_season", "vcov"] + var_across
+  var_total <- sum(vc$vcov)
+  
+  rpt_within <- var_within / var_total
+  rpt_across <- var_across / var_total
+  
+  return(c(rpt_within = rpt_within, rpt_across = rpt_across))
+}
+
+
+repeat_func_waBI <- function(fit) {
+  vc <- as.data.frame(VarCorr(fit))
+  var_within <- vc[vc$grp == "ID_season", "vcov"]
+  var_total <- sum(vc$vcov)
+  
+  rpt_within <- var_within / var_total
+  rpt_across <- 0
+  
+  return(c(rpt_within = rpt_within, rpt_across = rpt_across))
+}
 
 # * SPATIAL FUNCTIONS * ---------------------------------------------------
 
