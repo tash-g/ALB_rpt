@@ -185,7 +185,7 @@ load("Data_inputs/waal_birdis_habitat_data.RData")
 
 pnts.used <- pnts_all %>% filter(used == 1)
 
-env_vars <- c("bathy", "chlA", "SST")
+env_vars <- c("SST", "bathy", "chlA")
 rpt_df <- data.frame(env_var = character(), rpt_within = numeric(), rpt_across = numeric())
 var.list <- list()
 ranef.list <- list()
@@ -195,28 +195,30 @@ for (i in 1:length(env_vars)) {
   print(paste0("Processing ", env_vars[i]))
   
   # Fit the linear mixed model
-  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1 | tripID) + (1| season) + (1 | ID_season)")), data = pnts.used)
+  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID) + (1 | ID_season)")), data = pnts.used)
   
   # Bootstrap 95% CIs
   set.seed(123)
-  boot <- bootMer(mod, FUN = repeat_func_waBI, nsim = 500)
+  boot <- bootMer(mod, FUN = repeat_func, nsim = 500)
   rpt_CI <- apply(boot$t, 2, function(x) quantile(x, c(0.025, 0.975)))
 
   ## Extract random intercepts
   ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
+  ring_ranefs <- ranefs[ranefs$group == "ID_season" | ranefs$group == "ID", ] %>% 
+    rename(ID = level) %>%
     mutate(env = env_vars[i])
   
   ranef.list[[i]] <- ring_ranefs
   
   # Calculate repeatability
   var_components <- as.data.frame(VarCorr(mod))
-  var_within <- var_components[var_components$grp == "ID_season", "vcov"]
+  var_across <- var_components[var_components$grp == "ID", "vcov"]
+  var_within <- var_components[var_components$grp == "ID_season", "vcov"] + var_across
   var_total <- sum(var_components$vcov)
   
   ## Calculate repeatability
   rpt_within <- var_within / var_total 
+  rpt_across <- var_across / var_total 
   
   # Outputs
   var_df <- var_components %>%
@@ -224,11 +226,11 @@ for (i in 1:length(env_vars)) {
      mutate(across(where(is.numeric), ~ round(.x, 3)),
             Environment = env_vars[i],
             rpt_within = rpt_within,
-            rpt_across = NA,
+            rpt_across = rpt_across,
             LCL_within = rpt_CI[1,1],
             UCL_within = rpt_CI[2,1],
-            LCL_across = NA,
-            UCL_across = NA) %>%
+            LCL_across = rpt_CI[1,2],
+            UCL_across = rpt_CI[2,2]) %>%
      rename(Effect = grp, Variance = variance, "Std. dev" = std_dev) %>%
      select(-name) %>%
     relocate(Environment, .before = Effect)
@@ -276,8 +278,8 @@ ggplot(waal_birdis_var_used.long, aes(x = rpt, y = Environment, colour = group))
                 position = position_dodge(width = 0.4)) +
   labs(y = "", colour = "", x = "Repeatability (95% CI)") +
   scale_colour_manual(
-    values = c(col_between, col_within),
-    labels = c("Across season", "Within seasons") ) +
+    values = c(col_within, col_between),
+    labels = c("Within season", "Across seasons") ) +
   theme_bw() +
   theme(legend.position = "none")
 
@@ -371,6 +373,38 @@ waal_birdis_glmm.within_sst <-  glmmTMB(
 save(waal_birdis_glmm.within_sst, file = "Data_outputs/waal_birdis_glmm_within_sst.RData")
 rm(waal_birdis_glmm.within_sst); gc()
 
+
+# Between season #
+
+waal_birdis_glmm.between_bathy <- glmmTMB(
+  used ~ bathy_scaled + chl_scaled_log + sst_scaled + dist_col_scaled + phase +
+         (1 | tripID) + (0 + bathy_scaled | ID ) + (1 | ID ) + (0 + bathy_scaled | ID ),
+  data = pnts_all,
+  family = binomial() )
+
+save(waal_birdis_glmm.between_bathy, file = "Data_outputs/waal_birdis_glmm_between_bathy.RData")
+rm(waal_birdis_glmm.between_bathy); gc()
+
+
+waal_birdis_glmm.between_chl <-  glmmTMB(
+  used ~ bathy_scaled + chl_scaled_log + sst_scaled + dist_col_scaled + phase +
+         (1 | tripID) + (0 + chl_scaled_log | ID ) + (1 | ID ) + (0 + chl_scaled_log | ID ),
+  data = pnts_all,
+  family = binomial() )
+
+save(waal_birdis_glmm.between_chl, file = "Data_outputs/waal_birdis_glmm_between_chl.RData")
+rm(waal_birdis_glmm.between_chl); gc()
+
+
+waal_birdis_glmm.between_sst <- glmmTMB(
+  used ~ bathy_scaled + chl_scaled_log + sst_scaled + dist_col_scaled + phase +
+         (1 | tripID) + (0 + sst_scaled | ID ) + (1 | ID ) + (0 + sst_scaled | ID ),
+  data = pnts_all,
+  family = binomial() )
+
+save(waal_birdis_glmm.between_sst, file = "Data_outputs/waal_birdis_glmm_between_sst.RData")
+rm(waal_birdis_glmm.between_sst); gc()
+
 ```
 
 
@@ -389,7 +423,7 @@ n_sim <- 100
 
 ## Approximate degrees of freedom for uncertainty estimates:
 df_ID <- length(unique(pnts_all$ID)) - 1
-df_ID_season <- length(unique(pnts_all$ID_season)) - 1
+df_IDseason <- length(unique(pnts_all$ID_season)) - 1
 df_tripID <- length(unique(pnts_all$tripID)) - 1
 
 ## Store envronmental variables
@@ -502,8 +536,9 @@ for (i in 1:length(env_vars)) {
   
   ## Extract variance components (point estimates)
   vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$tripID[1,1])         
-  var_slope <- as.numeric(vc$tripID.1[1,1])     
+  var_int <- as.numeric(vc$ID_season[1,1])         
+  var_slope <- as.numeric(vc$ID_season.1[1,1])   
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
   var_resid <- (pi^2)/3                     
   
   ## Get covariance matrix for intercept/slope random effects
@@ -525,8 +560,8 @@ for (i in 1:length(env_vars)) {
     # 2. Sample variance components from scaled chi-square approximations:
     # (This is a rough approximation — bootstrapping is better but slower)
     
-    var_int_sim <- var_int * rchisq(1, df = df_tripID) / df_tripID
-    var_slope_sim <- var_slope * rchisq(1, df = df_tripID) / df_tripID
+    var_int_sim <- var_int * rchisq(1, df = df_IDseason) / df_IDseason
+    var_slope_sim <- var_slope * rchisq(1, df = df_IDseason) / df_IDseason
     
     ## Make the covariance matrix
     Sigma_sim = matrix( c( var_int_sim, 0,
@@ -539,7 +574,7 @@ for (i in 1:length(env_vars)) {
       Vx = varX,
       Vr = var_resid,
       Sigma = Sigma_sim, 
-      #Vo = var_tripID_sim,
+      Vo = var_tripID_sim,
       xrange = xrange)$condR
     
     condR_sim[[n]] <- condR_df %>% mutate(sim = n)
@@ -565,8 +600,8 @@ for (i in 1:length(env_vars)) {
   
   ## ~ Within ~ ----
   my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_within)$cond$tripID), 0,
-    0, as.numeric(VarCorr(mod_within)$cond$tripID.1)),
+    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
+    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
   nrow = 2) 
    
   res_within <- condR(
@@ -575,6 +610,7 @@ for (i in 1:length(env_vars)) {
     Vx = var(env_current),
     Vr = (pi^2)/3,
     Sigma = my_sigma,    
+    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
     xrange = range(env_current)
   )
   
@@ -707,6 +743,9 @@ for (i in 1:length(env_vars)) {
   
 }
 
+```
+
+```{r waal_birdis_rpt_slopes_plot}
 
 # [ 3 ] Final plot ----
 
@@ -732,44 +771,71 @@ dev.off()
 
 ### Heritability
 
-#### Habitat used
+#### Used habitat
+
+Change to individual intercept and try again
 
 ```{r waal_birdis_heritability_used }
 
 # (1) Load the data ----
-load("Data_outputs/waal_birdis_habitat_used_ranef.RData")
-
-ranefs.df_wide <- ranefs.df %>%
-  select(c(ring, season, trip, estimate, std.error, env)) %>%
-  pivot_wider(names_from = env, 
-              values_from = c(estimate, std.error),
-               names_glue = "{env}_{.value}")
+load("Data_inputs/waal_birdis_habitat_data.RData")
+pnts.used <- pnts_all %>% filter(used == 1)
 
 pedigree.df <- read.csv("Data_inputs/waal_birdis_pedigree.csv")
 pedigree.df %<>% dplyr::select(-Year)
 
+
+# (2) Check the pedigree -----
+
+## Are the ID in pnts.used the same as id in pedigree.df?
+pedigree.df$id <- as.character(pedigree.df$id)
+pnts.used$ID <- as.character(pnts.used$ID)
+
+model_ids <- unique(pnts.used$ID)
+pedigree_ids <- pedigree.df$id
+
+### IDs in model AND pedigree
+ids_in_both <- intersect(model_ids, pedigree_ids)
+
+### IDs in model NOT in pedigree
+ids_missing_from_pedigree <- setdiff(model_ids, pedigree_ids)
+
+
+# (3) Subset the pedigree to include all ancestors ----
+
+## Check formatting
 pedigree.df$dam <- as.character(pedigree.df$dam)
 pedigree.df$sire <- as.character(pedigree.df$sire)
 
-# (2) Make the pedigree ----
+ped_ids_needed <- get_ancestors(model_ids, pedigree.df)
+length(ped_ids_needed)
 
-Amat <- make_Amat(ranefs.df_wide, pedigree.df)
+## Subset the pedigree
+pedigree.pruned <- pedigree.df[pedigree.df$id %in% ped_ids_needed, ]
 
-# (3) Fit univariate models covering responses to each environment ----
+## Check for missing IDs - NONE, so end here
+setdiff(model_ids, pedigree.pruned$id) 
 
-ranefs.df_wide %<>% mutate(ring_pe = ring, animal = ring)
 
-priors_animal <- c(
-  prior(normal(0, 1), class = "Intercept"),
-  prior(student_t(3,0,1), class = "sd", group = "ring_pe"), 
-  prior(exponential(1), class = "sd", group = "animal"),
-  prior(student_t(3, 0, 1), class = "sigma"))
+# (4) Make the genetic matrix A ----
 
-# Build models - BLUP model
+ped <- pedigree.pruned
+names(ped) <- c("animal", "dam", "sire")
+
+# Deal with dams coming before offspring
+ped <- orderPed(ped)
+Amat <- as.matrix(nadiv::makeA(ped))
+
+
+# (5) Fit multivariate model covering responses to each environment ----
+
+pnts.used %<>% mutate(ring_pe = ID, animal = ID)
+
+# Build models
 waal_birdis_brm.heritability_used_bathy <- brm(
-  bathy_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
+  bathy ~ 1 + phase + (1 | ID_season ) + (1 | tripID) + (1 | gr(animal, cov = Amat)) ,
+  prior = priors,
+  data = pnts.used,
   data2 = list(Amat = Amat),
   cores = 4, chains = 4, iter = 4000,
     control = list(adapt_delta = 0.95) ) 
@@ -808,8 +874,8 @@ get_h2 <- function(model) {
   
 }
 
-v_animal <- (VarCorr(waal_birdis_brm.heritability_used_bathy, summary = FALSE)$animal$sd)^2
-v_r <- (VarCorr(waal_birdis_brm.heritability_used_bathy, summary = FALSE)$residual$sd)^2
+v_animal <- (VarCorr(waal_birdis_brm.heritability_used, summary = FALSE)$animal$sd)^2
+v_r <- (VarCorr(waal_birdis_brm.heritability_used, summary = FALSE)$residual$sd)^2
 
 h2_bathy <- as.mcmc(v_animal[, 1] / (v_animal[, 1] + v_r[, 1]))
 h2_chl <- as.mcmc(v_animal[, 2] / (v_animal[, 2] + v_r[, 2]))
@@ -840,9 +906,7 @@ ggplot(posteriors, aes(x = h2, y = env)) +
 
 ```
 
-#### Habitat preference
-
-##### Extract slopes
+#### Extract individual slopes
 
 ```{r waal_birdis_extract_slopes}
 
@@ -887,7 +951,7 @@ save(waal_birdis_habitat_slopes, file = "Data_outputs/waal_birdis_habitat_slopes
 
 ```
 
-##### Estimate heritability
+#### Estimate heritability
 
 Try and run each model separately
 
@@ -1128,12 +1192,11 @@ for (i in 1:length(env_vars)) {
   boot <- bootMer(mod, FUN = repeat_func, nsim = 500)
   rpt_CI <- apply(boot$t, 2, function(x) quantile(x, c(0.025, 0.975)))
 
+  
   ## Extract random intercepts
   ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
+  ring_ranefs <- ranefs[ranefs$group == "ID_season" | ranefs$group == "ID", ] %>% 
+    rename(ID = level) %>%
     mutate(env = env_vars[i])
   
   ranef.list[[i]] <- ring_ranefs
@@ -1301,7 +1364,7 @@ rm(waal_cro_glmm.within_sst); gc()
 
 waal_cro_glmm.between_bathy <- glmmTMB(
    used ~ bathy_scaled + chl_scaled_log + sst_scaled + dist_col_scaled + phase +
-         (1 | tripID) + (0  + bathy_scaled | tripID) + (1 | ID) + (0  + bathy_scaled | ID),
+         (1 | tripID) + (0  + bathy_scaled | ID) + (1 | ID) + (0  + bathy_scaled | ID),
   data = pnts_all,
   family = binomial() )
 
@@ -1311,7 +1374,7 @@ rm(waal_cro_glmm.between_bathy); gc()
 
 waal_cro_glmm.between_chl <- glmmTMB(
    used ~ bathy_scaled + chl_scaled_log + sst_scaled + dist_col_scaled + phase +
-         (1 | tripID) + (0  + chl_scaled_log | tripID) + (1 | ID) + (0  + chl_scaled_log | ID),
+         (1 | tripID) + (0  + chl_scaled_log | ID) + (1 | ID) + (0  + chl_scaled_log | ID),
   data = pnts_all,
   family = binomial() )
 
@@ -1320,7 +1383,7 @@ rm(waal_cro_glmm.between_chl); gc()
 
 waal_cro_glmm.between_sst <-  glmmTMB(
    used ~ bathy_scaled + chl_scaled_log + sst_scaled + dist_col_scaled + phase +
-         (1 | tripID) + (0  + sst_scaled | tripID) + (1 | ID) + (0  + sst_scaled | ID),
+         (1 | tripID) + (0  + sst_scaled | ID) + (1 | ID) + (0  + sst_scaled | ID),
   data = pnts_all,
   family = binomial() )
 
@@ -1424,7 +1487,7 @@ n_sim <- 100
 
 ## Approximate degrees of freedom for uncertainty estimates:
 df_ID <- length(unique(pnts_all$ID)) - 1
-df_ID_season <- length(unique(pnts_all$ID_season)) - 1
+df_IDseason <- length(unique(pnts_all$ID_season)) - 1
 df_tripID <- length(unique(pnts_all$tripID)) - 1
 
 ## Store envronmental variables
@@ -1480,8 +1543,7 @@ for (i in 1:length(env_vars)) {
     var_int, 0,
     0, var_slope),
     nrow = 2) 
-  
-  
+
   set.seed(123)
   
   condR_sim <- list()
@@ -1538,8 +1600,9 @@ for (i in 1:length(env_vars)) {
   
   ## Extract variance components (point estimates)
   vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$tripID[1,1])         
-  var_slope <- as.numeric(vc$tripID.1[1,1])     
+  var_int <- as.numeric(vc$ID_season[1,1])         
+  var_slope <- as.numeric(vc$ID_season.1[1,1])   
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
   var_resid <- (pi^2)/3                     
   
   ## Get covariance matrix for intercept/slope random effects
@@ -1561,9 +1624,10 @@ for (i in 1:length(env_vars)) {
     # 2. Sample variance components from scaled chi-square approximations:
     # (This is a rough approximation — bootstrapping is better but slower)
     
-    var_int_sim <- var_int * rchisq(1, df = df_tripID) / df_tripID
-    var_slope_sim <- var_slope * rchisq(1, df = df_tripID) / df_tripID
-    
+    var_int_sim <- var_int * rchisq(1, df = df_IDseason) / df_IDseason
+    var_slope_sim <- var_slope * rchisq(1, df = df_IDseason) / df_IDseason
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+
     ## Make the covariance matrix
     Sigma_sim = matrix( c( var_int_sim, 0,
                            0, var_slope_sim), nrow = 2)
@@ -1575,7 +1639,7 @@ for (i in 1:length(env_vars)) {
       Vx = varX,
       Vr = var_resid,
       Sigma = Sigma_sim, 
-      #Vo = var_tripID_sim,
+      Vo = var_tripID_sim,
       xrange = xrange)$condR
     
     condR_sim[[n]] <- condR_df %>% mutate(sim = n)
@@ -1601,8 +1665,8 @@ for (i in 1:length(env_vars)) {
   
   ## ~ Within ~ ----
   my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_within)$cond$tripID), 0,
-    0, as.numeric(VarCorr(mod_within)$cond$tripID.1)),
+    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
+    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
   nrow = 2) 
    
   res_within <- condR(
@@ -1611,6 +1675,7 @@ for (i in 1:length(env_vars)) {
     Vx = var(env_current),
     Vr = (pi^2)/3,
     Sigma = my_sigma,    
+    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
     xrange = range(env_current)
   )
   
@@ -1679,6 +1744,10 @@ for (i in 1:length(env_vars)) {
 waal_cro_condR_results <- do.call("rbind", cond_res.list)
 save(waal_cro_condR_results, file = "Data_outputs/waal_cro_condR_results.RData")
 
+```
+
+```{r waal_cro_plot_slopes}
+
 # [ 2 ] Plot individual slopes ---- 
 
 for (i in 1:length(env_vars)) {
@@ -1737,6 +1806,9 @@ for (i in 1:length(env_vars)) {
   
 }
 
+```
+
+```{r waal_cro_rpt_slopes_plot}
 
 # [ 3 ] Final plot ----
 
@@ -2038,10 +2110,8 @@ for (i in 1:length(env_vars)) {
 
   ## Extract random intercepts
   ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
+  ring_ranefs <- ranefs[ranefs$group == "ID_season" | ranefs$group == "ID", ] %>% 
+    rename(ID = level) %>%
     mutate(env = env_vars[i])
   
   ranef.list[[i]] <- ring_ranefs
@@ -2158,7 +2228,7 @@ load("Data_inputs/bbal_birdis_habitat_data.RData")
 
 bbal_birdis_glmm.within_bathy <- glmmTMB(
   used ~ bathy_scaled + chl_scaled + sst_scaled + dist_col_scaled + phase +
-    (1 | tripID) + (0 + bathy_scaled | tripID) + (1 | ID_season) + (0 + bathy_scaled | ID_season),                  
+    (1 | season ) + (1 | tripID) + (0 + bathy_scaled | tripID) + (1 | ID_season) + (0 + bathy_scaled | ID_season),                  
   data = pnts_all,
   family = binomial() )
 
@@ -2189,7 +2259,7 @@ rm(bbal_birdis_glmm.within_sst); gc()
 # Between season #
 
 bbal_birdis_glmm.between_bathy <- glmmTMB(
-  used ~ bathy_scaled + chl_scaled + sst_scaled + dist_col_scaled + phase +
+  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
         (1 | tripID) + (0 + bathy_scaled | tripID) + (1 | ID) + (0 + bathy_scaled | ID),
   data = pnts_all,
   family = binomial() )
@@ -2198,18 +2268,8 @@ save(bbal_birdis_glmm.between_bathy, file = "Data_outputs/bbal_birdis_glmm_betwe
 rm(bbal_birdis_glmm.between_bathy); gc()
 
 
-bbal_birdis_glmm.between_chl <- glmmTMB(
-  used ~ bathy_scaled + chl_scaled + sst_scaled + dist_col_scaled + phase +
-        (1 | tripID) + (0 + chl_scaled | tripID) + (1 | ID) + (0 + chl_scaled | ID),
-  data = pnts_all,
-  family = binomial() )
-
-save(bbal_birdis_glmm.between_chl, file = "Data_outputs/bbal_birdis_glmm_between_chl.RData")
-rm(bbal_birdis_glmm.between_chl); gc()
-
-
 bbal_birdis_glmm.between_sst <-  glmmTMB(
-  used ~ bathy_scaled + chl_scaled + sst_scaled + dist_col_scaled + phase +
+  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
         (1 | tripID) + (0 + sst_scaled | tripID) + (1 | ID) + (0 + sst_scaled | ID),
   data = pnts_all,
   family = binomial(),
@@ -2218,6 +2278,15 @@ bbal_birdis_glmm.between_sst <-  glmmTMB(
 save(bbal_birdis_glmm.between_sst, file = "Data_outputs/bbal_birdis_glmm_between_sst.RData")
 rm(bbal_birdis_glmm.between_sst); gc()
 
+
+bbal_birdis_glmm.between_chl <- glmmTMB(
+  used ~ sst_scaled + bathy_scaled + chl_scaled + dist_col_scaled + phase +
+        (1 | tripID) + (0 + chl_scaled | tripID) + (1 | ID) + (0 + chl_scaled | ID),
+  data = pnts_all,
+  family = binomial() )
+
+save(bbal_birdis_glmm.between_chl, file = "Data_outputs/bbal_birdis_glmm_between_chl.RData")
+rm(bbal_birdis_glmm.between_chl); gc()
 
 ```
 
@@ -2491,6 +2560,9 @@ for (i in 1:length(env_vars)) {
 bbal_birdis_condR_results <- do.call("rbind", cond_res.list)
 save(bbal_birdis_condR_results, file = "Data_outputs/bbal_birdis_condR_results.RData")
 
+```
+
+```{r bbal_birdis_plot_slopes}
 
 # [ 2 ] Plot individual slopes ----
 
@@ -2556,6 +2628,9 @@ for (i in 1:length(env_vars)) {
 rnd_effs.out <- do.call("rbind", rnd_effs.list)
 save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
 
+```
+
+```{r bbal_birdis_rpt_slopes_plot}
 
 # [ 3 ] Final plot ----
 
@@ -2930,10 +3005,8 @@ for (i in 1:length(env_vars)) {
 
   ## Extract random intercepts
   ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
+  ring_ranefs <- ranefs[ranefs$group == "ID_season" | ranefs$group == "ID", ] %>% 
+    rename(ID = level) %>%
     mutate(env = env_vars[i])
   
   ranef.list[[i]] <- ring_ranefs
@@ -3074,7 +3147,6 @@ rm(bbal_ker_glmm.within_chl); gc()
 bbal_ker_glmm.within_sst <- glmmTMB(
   used ~ dist_shelf_bin + chl_scaled + sst_scaled +  dist_col_scaled + phase +
     (1 | tripID) + (0 + sst_scaled | tripID) + (1 | ID_season) + (0 + sst_scaled | ID_season),       
-  data = pnts_all,
   family = binomial() )
 
 save(bbal_ker_glmm.within_sst, file = "Data_outputs/bbal_ker_glmm_within_sst.RData")
@@ -3084,8 +3156,8 @@ rm(bbal_ker_glmm.within_sst); gc()
 # Between season #
 
 bbal_ker_glmm.between_bathy <- glmmTMB(
-  used ~ dist_shelf_bin + chl_scaled + sst_scaled +  dist_col_scaled + phase +
-         (1 | tripID) + (0 + dist_shelf_bin | tripID) + (1 | ID) + (0 + dist_shelf_bin | ID),
+  used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
+         (1 | tripID) + (0 + dist_shelf_bin | ID) + (1 | ID) + (0 + dist_shelf_bin | ID),
   data = pnts_all,
   family = binomial() )
 
@@ -3094,8 +3166,8 @@ rm(bbal_ker_glmm.between_bathy); gc()
 
 
 bbal_ker_glmm.between_chl <- glmmTMB(
-  used ~ dist_shelf_bin + chl_scaled + sst_scaled +  dist_col_scaled + phase +
-         (1 | tripID) + (0 + chl_scaled | tripID) + (1 | ID) + (0 + chl_scaled | ID),
+  used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
+         (1 | tripID) + (0 + chl_scaled | ID) + (1 | ID) + (0 + chl_scaled | ID),
   data = pnts_all,
   family = binomial() )
 
@@ -3104,8 +3176,8 @@ rm(bbal_ker_glmm.between_chl); gc()
 
 
 bbal_ker_glmm.between_sst <- glmmTMB(
-  used ~ dist_shelf_bin + chl_scaled + sst_scaled +  dist_col_scaled + phase +
-         (1 | tripID) + (0 + sst_scaled | tripID) + (1 | ID) + (0 + sst_scaled | ID),
+  used ~ sst_scaled + dist_shelf_bin + chl_scaled + dist_col_scaled + phase + 
+         (1 | tripID) + (0 + sst_scaled | ID) + (1 | ID) + (0 + sst_scaled | ID),
   data = pnts_all,
   family = binomial(),
   control = glmmTMBControl(optCtrl = list(iter.max=1e5, eval.max=1e5)) )
@@ -3201,6 +3273,7 @@ n_sim <- 100
 
 ## Approximate degrees of freedom for uncertainty estimates:
 df_ID <- length(unique(pnts_all$ID)) - 1
+df_IDseason <- length(unique(pnts_all$ID_season)) - 1
 df_tripID <- length(unique(pnts_all$tripID)) - 1
 
 ## Store envronmental variables
@@ -3314,8 +3387,10 @@ for (i in 1:2) {
   
   ## Extract variance components (point estimates)
   vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$tripID[1,1])         
-  var_slope <- as.numeric(vc$tripID.1[1,1])     
+  var_int <- as.numeric(vc$ID_season[1,1])         
+  var_slope <- as.numeric(vc$ID_season.1[1,1])
+  var_tripID <- as.numeric(vc$tripID[1,1]) 
+
   var_resid <- (pi^2)/3                     
   
   ## Get covariance matrix for intercept/slope random effects
@@ -3337,9 +3412,10 @@ for (i in 1:2) {
     # 2. Sample variance components from scaled chi-square approximations:
     # (This is a rough approximation — bootstrapping is better but slower)
     
-    var_int_sim <- var_int * rchisq(1, df = df_tripID) / df_tripID
-    var_slope_sim <- var_slope * rchisq(1, df = df_tripID) / df_tripID
-    
+    var_int_sim <- var_int * rchisq(1, df = df_IDseason) / df_IDseason
+    var_slope_sim <- var_slope * rchisq(1, df = df_IDseason) / df_IDseason
+    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
+
     ## Make the covariance matrix
     Sigma_sim = matrix( c( var_int_sim, 0,
                            0, var_slope_sim), nrow = 2)
@@ -3351,7 +3427,7 @@ for (i in 1:2) {
       Vx = varX,
       Vr = var_resid,
       Sigma = Sigma_sim, 
-      #Vo = var_tripID_sim,
+      Vo = var_tripID_sim,
       xrange = xrange)$condR
     
     condR_sim[[n]] <- condR_df %>% mutate(sim = n)
@@ -3387,7 +3463,7 @@ for (i in 1:2) {
     Vx = var(env_current),
     Vr = (pi^2)/3,
     Sigma = my_sigma,    
-   # Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
+    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
     xrange = range(env_current)
   )
   
@@ -3477,7 +3553,7 @@ names(V_slope) <- colnames(V_slopes_matrix)
 V_residual <- (pi^2) / 3
 
 # Total random variance per level
-V_random <- V_ID_intercept + V_slope + V_tripID
+V_random <- V_ID_intercept + V_slope
 V_total <- V_ID_intercept + V_slope + V_tripID + V_residual
 
 # Conditional repeatability per level
@@ -3513,8 +3589,8 @@ for(i in seq_len(n_sim)){
 
   # Calculate conditional repeatability for each slope level
   for(j in seq_along(var_slope_sim)){
-    V_random_sim <- var_int_sim + var_slope_sim[j] + var_tripID_sim
-    V_total_sim <- V_random_sim + V_residual
+    V_random_sim <- var_int_sim + var_slope_sim[j] 
+    V_total_sim <- V_random_sim + var_tripID_sim + V_residual
     rpt_sim[i, j] <- V_random_sim / V_total_sim
   }
 }
@@ -3548,9 +3624,10 @@ mod_within = get("bbal_ker_glmm.within_bathy")
 
 # Extract variance-covariance matrices of random effects
 vc <- VarCorr(mod_within)$cond
-V_tripID_intercept <- as.numeric(vc$tripID[1,1])
-V_slopes_matrix <- vc$tripID.1 
-
+V_IDseason_intercept <- as.numeric(vc$ID_season[1,1])
+V_slopes_matrix <- vc$ID_season.1
+V_tripID <- as.numeric(vc$tripID[1,1])
+ 
 # Extract variances (diagonal) for each bathymetry level slope
 V_slope <- diag(V_slopes_matrix)
 names(V_slope) <- colnames(V_slopes_matrix)
@@ -3559,8 +3636,8 @@ names(V_slope) <- colnames(V_slopes_matrix)
 V_residual <- (pi^2) / 3
 
 # Total random variance per level
-V_random <- V_tripID_intercept + V_slope 
-V_total <- V_tripID_intercept + V_slope + V_residual
+V_random <- V_ID_intercept + V_slope 
+V_total <- V_ID_intercept + V_slope + V_tripID + V_residual
 
 # Conditional repeatability per level
 R2 <- V_random / V_total
@@ -3570,7 +3647,7 @@ R_cond.df_within <- cbind(rownames(R_cond.df_within), data.frame(R_cond.df_withi
 R_cond.df_within %<>%
   mutate(species = "BBAL",
          colony = "Kerguelen",
-         level = "Within", 
+         level = "within", 
          var_slope = V_slope,
          R2 = R2,
          marginal_R2 = NA,
@@ -3589,14 +3666,14 @@ colnames(rpt_sim) <- names(V_slope)
 
 for(i in seq_len(n_sim)){
   # Simulate variance components from scaled chi-square
-  var_int_sim <- V_tripID_intercept * rchisq(1, df_tripID) / df_tripID
-
-  var_slope_sim <- sapply(V_slope, function(v) v * rchisq(1, df_ID) / df_ID)
+  var_int_sim <- V_ID_intercept * rchisq(1, df_IDseason) / df_ID
+  var_slope_sim <- sapply(V_slope, function(v) v * rchisq(1, df_IDseason) / df_IDseason)
+  var_tripID_sim <- V_tripID * rchisq(1, df_tripID) / df_tripID
 
   # Calculate conditional repeatability for each slope level
   for(j in seq_along(var_slope_sim)){
     V_random_sim <- var_int_sim + var_slope_sim[j] 
-    V_total_sim <- V_random_sim + V_residual
+    V_total_sim <- V_random_sim + var_tripID_sim + V_residual
     rpt_sim[i, j] <- V_random_sim / V_total_sim
   }
 }
