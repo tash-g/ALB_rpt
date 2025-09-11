@@ -224,7 +224,7 @@ ggarrange(bba_kerguelen_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')
 
 Here I've plotted all the GPS tracks for the different species and colonies. Note that birds from Kerguelen tend to take a NE or SW trajectory, while WAAL at Bird Island tend to go NW.
 
-#### Example tracks from each species/colony
+## Example tracks from each species/colony
 
 Here I've plotted a couple of examples of within- versus between-individual tracks for each species and colony. These have been cherry-picked to show individuals with similar tracks to illustrate the greatest level of within-track similarity; note that even the most similar wandering albatross tend to show a lot of variation in their trips.
 
