@@ -162,6 +162,8 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *hatch_code*: Hatch outcome code (e.g., success/failure);
     -   *phase*: Breeding phase during which the trip occurred.
 
+-   `{species}_{colony}_habitat_data.RData`: GLS trips processed and labelled with trip IDs and behavioural bouts.
+
 -   `ind_meta.RData`: Individual-level metadata, summarised from the demographic dataset (`{BAS/Chize}_all_demo.RData`).
 
     -   *ring*: Unique bird ID;
