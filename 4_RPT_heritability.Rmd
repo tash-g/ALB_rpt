@@ -55,22 +55,9 @@ col_slope <- "#0d4e3a"
 
 # Foraging effort ====
 
-bbal_birdis.effort <- loadRData("Data_outputs/bbal_birdis_behaviour_heritability_posteriors.RData") %>%
-  mutate(spec_col = "BBAL Bird Island")
-waal_birdis.effort <- loadRData("Data_outputs/waal_birdis_behaviour_heritability_posteriors.RData") %>%
-  mutate(spec_col = "WAAL Bird Island")
-waal_cro.effort <- loadRData("Data_outputs/waal_cro_behaviour_heritability_posteriors.RData") %>%
-  mutate(spec_col = "WAAL Crozet")
+posteriors_effort <- loadRData("Data_outputs/behaviour_heritability_posteriors.RData")
 
-posteriors_effort <- rbind(bbal_birdis.effort, waal_birdis.effort, waal_cro.effort)
-
-posteriors_effort %<>%
-  group_by(spec_col, behaviour) %>%
-  mutate(mean_h2 = mean(h2_post, na.rm = TRUE)) %>%
-  arrange(behaviour, mean_h2) %>%
-  ungroup()
-
-## Recode behaviour
+## Recode behaviour & spec col
 posteriors_effort %<>%
   mutate(behaviour = recode(behaviour,
                             "duration.hrs" = "Trip duration",
@@ -78,11 +65,16 @@ posteriors_effort %<>%
                             "transit_time.pct" = "Flight time",
                             "rest_time.pct" = "Rest time",
                             "transit_to_rest.ratio" = "Flight:Rest ratio"),
-         behaviour = factor(behaviour, levels = rev(c("Trip duration", "Landings", "Rest time", "Flight time", "Flight:Rest ratio"))))
+          spec_col = recode(spec_col,
+                "bbal_birdis" = "BBAL Bird Island",
+                "waal_birdis" = "WAAL Bird Island",
+                "waal_cro" = "WAAL Crozet"),
+         behaviour = factor(behaviour, levels = rev(c("Trip duration", "Rest time", "Landings", "Flight:Rest ratio", "Flight time"))))
+
 
 # Foraging bearings ====
 
-posteriors_bearings <- loadRData("all_posteriors_spatial_heritability.RData")
+posteriors_bearings <- loadRData("Data_outputs/all_posteriors_spatial_heritability.RData")
 
 
 # Habitat slopes =====
@@ -102,8 +94,7 @@ posteriors_effort %<>%
   mutate(group = "effort")
 
 posteriors_bearings %<>%
-  select(c(spec_col, Intercept)) %>%
-  rename(h2 = Intercept) %>%
+  select(c(spec_col, h2)) %>%
   mutate(behaviour = "Foraging bearing",
          group = "bearings")
 
@@ -121,7 +112,7 @@ posteriors_all <- rbind(posteriors_effort, posteriors_bearings, posteriors_slope
 # Change ordering for plot/table
 posteriors_all %<>%
    mutate(behaviour = factor(behaviour, 
-                             levels = c("Trip duration", "Landings", "Rest time", "Flight time", "Flight:Rest ratio",
+                             levels = c("Trip duration", "Rest time", "Landings", "Flight:Rest ratio", "Flight time",
                                         "Foraging bearing",
                                         "Bathymetry preference", "Chlorophyll preference", "SST preference"))) %>%
    arrange(spec_col, behaviour)
@@ -135,6 +126,28 @@ posteriors_all$behaviour <- factor(
 #### Figure 6: Heritability plot
 
 ```{r plot_heritability}
+
+# heritability.summary <- posteriors_all %>%
+#   group_by(spec_col, behaviour, group) %>%
+#   summarise(
+#     median_val = median(h2, na.rm = TRUE),
+#     lower_ci = quantile(h2, 0.025, na.rm = TRUE),
+#     upper_ci = quantile(h2, 0.975, na.rm = TRUE) )
+# 
+# 
+#  ggplot(heritability.summary, aes(x = median_val, y = behaviour, colour = group)) +
+#   geom_point(position = position_dodge(width = 0.6), size = 3) +
+#   geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci),
+#                  position = position_dodge(width = 0.6), height = 0.3) +
+#   scale_colour_manual(values = c(
+#     "effort" = col_effort,
+#     "bearings" = col_bearing,
+#     "slopes" = col_slope)) +
+#   facet_wrap(~spec_col, nrow = 1, ncol = 3, scales = "free_x") +
+#   labs(x = "Heritability h² (median, 95% CI)", y = "") +
+#   theme_bw() +
+#   theme(legend.position = "none")
+ 
 
 heritability_plot <- ggplot(posteriors_all, aes(x = h2, y = behaviour, fill = group)) +
   geom_density_ridges(alpha = 0.6, scale = 1) +
