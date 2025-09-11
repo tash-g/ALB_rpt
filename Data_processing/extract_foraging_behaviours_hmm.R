@@ -21,7 +21,7 @@
 
 
 # Set-up =======================================================================
-  
+
 # Functions for GPS processing and plotting
 source("RPT_functions.R")
 
@@ -134,31 +134,40 @@ for (i in 1:length(spec_col)) {
 spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 
 for (i in 1:length(spec_col)) {
+
+  print(paste0("Processing ", spec_col[i], "..."))
+    
+  load(paste0("Data_inputs/", spec_col[i], "_gps_labelled.RData")) # dataset filtered manually for bad tracks
+  load(paste0("Data_outputs/", spec_col[i], "_labelledHMM.RData")) # dataset labelled with behaviours
   
-  load(paste0("Data_inputs/", spec_col[i], "_gps_labelled.RData"))
-  load(paste0("Data_outputs/", spec_col[i], "_labelledHMM.RData"))
-  ### Calculate landings using speed filter ----
+  # Merge the datasets
+  my_gps %<>% select(-c(dist_col, boutID, step, angle))
   
-  ## Remove trips with unrealistic speed
-  gps_labelled.df %<>% filter(calc_speed < 26)
+  gps_labelled.df <- merge(gps_labelled.df, my_gps, 
+                            by = c("ID", "datetime", "ring", "season", "longitude", "latitude"))
   
-  ## Deal with duplicates
+  ### Calculate landings based on transitions to flight states ----
+  
+  ## Deal with potential duplicates
   gps_labelled.df %<>%
     group_by(ID) %>%
     mutate(datetime = lubridate::round_date(datetime, "10 minutes")) %>%
     distinct() %>%
     arrange(datetime)
   
-  ## Label landings & transit
+  ## Relabel landings & transit to match with GLS
   gps_labelled.df %<>% 
-    mutate(behav_state = ifelse(calc_speed < 2.7, "rest", "aloft"),
+    group_by(ID) %>%
+    mutate(behav_state = recode(State,
+                                "Travel" = "transit",
+                                "Rest" = "rest",
+                                "Search" = "aloft"), 
            prev_state = lag(behav_state),
-           landing = ifelse(behav_state == "aloft" & prev_state == "rest",
+           landing = ifelse( ( behav_state == "aloft" | behav_state == "transit" ) & prev_state == "rest",
                             "take-off",
-                            ifelse(behav_state == "rest" & prev_state == "aloft",
+                            ifelse(behav_state == "rest" & ( prev_state == "aloft" | prev_state == "transit" ),
                                    "landing", "none")),
-           landing = ifelse(is.na(landing), "none", landing),
-           behav_state = ifelse(calc_speed > 8.3, "transit", behav_state))
+           landing = ifelse(is.na(landing), "none", landing))
   
   
   ## Calculate distance to next point
@@ -182,7 +191,7 @@ for (i in 1:length(spec_col)) {
            total_distance.km = sum(dist_next),
            max_distance.km = max(dist_col) / 1000 ) %>%
     select(-c(start_date, end_date))
-    
+  
   ### Load GLS data and merge ----
   load(paste0("Data_inputs/", spec_col[i], "_gls_labelled_subset.RData"))
   
@@ -197,7 +206,7 @@ for (i in 1:length(spec_col)) {
   
   for (j in 1:length(all_birds)) {
     
-    setTxtProgressBar(pb, i)
+    setTxtProgressBar(pb, j)
     
     mygps <- subset(gps_full, ringYr == all_birds[j]) %>%
       mutate(immersion = NA, dur.mins = NA, 
@@ -304,10 +313,8 @@ for (i in 1:length(spec_col)) {
                        # Duration
                        duration.hrs = as.numeric(difftime(end_date, start_date, units = "hours") + 0.17),
                        duration.days = duration.hrs / 24,
-                       duration.hrs.var = var(duration.hrs),
                        # Transitions
                        transitions = sum(dryWet != prev_state, na.rm = TRUE),  # Count state transitions
-                       transitions.var = var(transitions),
                        landing = sum(dryWet == "dry" & prev_state == "wet", na.rm = TRUE),
                        takeoff = sum(dryWet == "wet" & prev_state == "dry", na.rm = TRUE),
                        # Behaviours
@@ -315,12 +322,7 @@ for (i in 1:length(spec_col)) {
                        rest_time.hrs = sum(bout_time[behav_state == "rest"], na.rm = T) / 60,
                        transit_time.pct = transit_time.hrs/duration.hrs * 100,
                        rest_time.pct = rest_time.hrs/duration.hrs * 100,
-                       transit_to_rest.ratio = transit_time.hrs/rest_time.hrs,
-                       # Distances
-                       total_distance.km = sum(unique(total_distance.km)),
-                       total_distance.var = var(total_distance.km),
-                       max_distance.km = max(max_distance.km),
-                       max_distance.var = var(max_distance.km)) %>%
+                       transit_to_rest.ratio = transit_time.hrs/rest_time.hrs) %>%
       ungroup() %>%
       filter(duration.hrs > 0) %>%
       filter(!(transit_time.pct > 100 | rest_time.pct > 100)) %>%
@@ -335,11 +337,11 @@ for (i in 1:length(spec_col)) {
   trips_summary %<>% filter(duration.days <= 30 & rest_time.pct > 0 & rest_time.pct < 100)
   
   # Output data
-  #save(trips_summary, file = paste0("Data_inputs/", spec_col[i], "_individual_trips_summary.RData"))
+  save(trips_summary, file = paste0("Data_inputs/", spec_col[i], "_individual_trips_summary.RData"))
   
   
 }
-  
+
 
 # ________________ ####
 # Get sample sizes =============================================================

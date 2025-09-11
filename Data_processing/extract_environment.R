@@ -54,6 +54,22 @@ spec_col <- "bbal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
 load(paste0("Data_outputs/", spec_col, "_available_pnts_population_level.RData"))
 pnts_all <- all_pnts
 
+pnts_all%<>%
+mutate(ring = recode(ring,
+                     "11376" = "BS11376",
+                     "11378" = "BS11378",
+                     "25076" = "BS25076",
+                     "8196" = "BS28916",
+                     "8337" = "BS28337",
+                     "BS8337" = "BS28337",
+                     "BB21651" = "BS81651",
+                     "BS7625" = "BS27625",
+                     "BS8402" = "BS28402",
+                     "BS8404" = "BS28404",
+                     "BS9084" = "BS19084",
+                     "BS9444" = "BS19444"))
+
+
 # Set parameters
 years = unique(year(pnts_all$date_hourly))
 months = unique(month(pnts_all$date_hourly))

@@ -57,7 +57,7 @@ select <- dplyr::select
 # Load the data ----
 
 # Set manually
-spec_col <- "bbal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
+spec_col <- "waal_birdis"  # "bbal_birdis" "bbal_ker" "waal_birdis", "waal_cro"
 
 # Load the GPS data
 my_file <- list.files("Data_inputs/", pattern = paste0(spec_col, "_gps_labelled"))
@@ -75,6 +75,7 @@ my_gps %<>%
                          as.numeric(format(as.Date(datetime), "%Y")),
                          as.numeric(format(as.Date(datetime), "%Y")) + 1 ))
 
+subset(my_gps, ring == "5072900")
 
 ### Prepare dataset ------
 
@@ -98,6 +99,8 @@ my_gps.hmm <- my_gps %>%
   relocate(ID, longitude, latitude) %>% 
   data.frame() 
 
+subset(my_gps.hmm, grepl("5072900", ID))
+
 gps_hmm <- prepData(my_gps.hmm,
                     type = "LL", 
                     coordNames = c("longitude", "latitude")) 
@@ -112,7 +115,9 @@ gps_hmm$step[gps_hmm$step == 0 | is.na(gps_hmm$step)] <- runif(sum(gps_hmm$step 
 gps_hmm <- na.omit(gps_hmm)
 gps_hmm %<>% filter(!is.na(angle) & !is.na(step))
 
-save(gps_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+subset(gps_hmm, grepl("5072900", ID))
+
+save(gps_hmm, file = paste0("Data_outputs/", spec_col, "_HMMdata.RData"))
 
 
 # Fit the HMM ----
@@ -129,7 +134,7 @@ location_0 <- c(0.00302, 0.00343, 0.0291)
 concentration_0 <- c(50.79, 1.27, 44.02)
 anglePar0 <- c(location_0, concentration_0)
 
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+#load(paste0("Data_outputs/", spec_col, "_HMMdata.RData"))
 
 stateNames <- c("travel","search", "rest")
 
@@ -141,7 +146,7 @@ my_hmm <- fitHMM(
   estAngleMean = list(angle = TRUE),
   stateNames = stateNames)
 
-save(my_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.RData"))
+save(my_hmm, file = paste0("Data_outputs/", spec_col, "_HMM.RData"))
 
 ## Plot pseudo-residuals
 # plotPR(my_hmm)
@@ -149,8 +154,8 @@ save(my_hmm, file = paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.R
 
 ### Assign behaviours ---------
 
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
-load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMM.RData"))
+#load(paste0("Data_outputs/", my_species, "_", colony_exp, "_HMMdata.RData"))
+load(paste0("Data_outputs/", spec_col, "_HMM.RData"))
 
 hmm_data_out <- my_hmm$data
 hmm_data_out$State <- viterbi(my_hmm)
