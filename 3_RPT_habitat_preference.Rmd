@@ -11,35 +11,6 @@ editor_options:
     wrap: 72
 ---
 
-**Note:** Naming conventions for files:
-
--   Bird Island = birdis
-
--   Crozet= cro
-
--   Kerguelen = ker
-
--   Chlorophyll = chl
-
-Inputs:
-
--   *species_colony*\_sst-bathy-chla_data_population_level.RData
-
-Outputs:
-
--   *species_colony*\_habitat_data.RData
-
--   Figure 4, Figure 5, Table 4, Table 5
-
--   *species_colony*\_habitat_used_variances.RData
-
--   *species_colony*\_habitat_used_ranef.Rdata
-
--   *species_colony*\_glmm\_*[between/within]*\_*environment*.RData
-
--   *species_colony*\_habitat_slopes.RData
-
--   *species_colony*\_pedigree.csv
 
 # Set-up
 

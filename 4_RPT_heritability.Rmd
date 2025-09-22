@@ -8,18 +8,6 @@ output:
     toc_depth: 4
 ---
 
-Inputs:
-
--   *species_colony*\_heritability_posteriors.RData
-
--   all_posteriors_spatial_heritability.RData
-
--   *species_colony*\_habitat_pref_heritability_posteriors.RData
-
-Outputs:
-
--   Figure 6, Table 6
-
 # Set-up
 
 ```{r setup, include=FALSE}

@@ -11,24 +11,6 @@ editor_options:
     wrap: 72
 ---
 
-Inputs:
-
--   *species_colony*\_individual_trips_summary.RData
-
--   ind_meta.RData
-
--   *species_colony*\_pedigree.csv
-
-Outputs:
-
--   behavioural_repeatability_data.RData
-
--   *species_colony*\_brms_behaviour_repeatability\_*behaviour*.RData
-
--   behaviour_heritability_posteriors.RData
-
--   behavioural_repeatability_results.RData
-
 ## Set-up
 
 ```{r setup, include=FALSE}
@@ -62,7 +44,7 @@ ind_list <- vector(mode = "list", length = 4)
 
 for (i in 1:length(ind_files)) {
   
-  my_data <- loadRData(paste0("Data_inputs/",ind_files[i]))
+  my_data <- loadRData(paste0("Data_inputs/", ind_files[i]))
   
   
   ind_list[[i]] <- my_data

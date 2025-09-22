@@ -8,32 +8,6 @@ output:
     toc_depth: 4
 ---
 
-Inputs:
-
--   *species_colony*\_gps_labelled.RData
-
-Outputs:
-
--   Figure 2, Figure 3, Figure Sx, Figure Sx
-
--   all_gps.RData
-
--   bearings_data.Rdata
-
--   *species_colony*\_bearing_differences.RData
-
--   bearing_means.RData
-
--   bearing_models_summary.RData
-
--   *species_colony*\_ba_comparison.RData
-
--   ba_means.RData
-
--   ba_model_summary.RData
-
-This document contains the results of the spatial repeatability section of the repeatability project. It uses outputs from the main R script, so make sure those outputs are up-to-date before running the markdown code.
-
 ## Set-up
 
 ```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
