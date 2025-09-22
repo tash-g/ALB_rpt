@@ -32,6 +32,20 @@ cut_to_breeding <- function(data, medLay, medHatch, hatchTime, broodTime) {
 
 
 
+format_numbers <- function(x) {
+  ifelse(
+    abs(x) < 0.0001,
+    "<0.0001",
+    ifelse(
+      abs(x) >= 0.01,
+      format(round(x, 2), nsmall = 2),  # two decimal places
+      signif(x, 2)                       # 2 significant figures
+    )
+  )
+}
+
+
+
 label_breeding <- function(data, medLay, medHatch) {
   
   # Process the data
@@ -94,6 +108,53 @@ get_ancestors <- function(ids, pedigree) {
 }
 
 
+get_h2 <- function(model) {
+  
+  v_animal <- (VarCorr(model, summary = FALSE)$animal$sd)^2
+  v_r <- (VarCorr(model, summary = FALSE)$residual$sd)^2
+  
+  h2_est <- as.mcmc(v_animal[, 1] / (v_animal[, 1] + v_r[, 1]))
+  
+  return(h2_est)
+  
+}
+
+# Essentially the same as make_Amat but without creating the genetic matrix
+prep_ped <- function(focal_data, pedigree_df) {
+  
+  focal_data$ring <- as.character(focal_data$ring)
+  
+  # Extract IDs from model data and pedigree
+  model_ids <- unique(focal_data$ring)
+  
+  # First prune pedigree
+  ped_ids_needed <- get_ancestors(model_ids, pedigree_df)
+  pedigree_pruned <- pedigree_df[pedigree_df$id %in% ped_ids_needed, ]
+  
+  # Add missing IDs as founders
+  missing_ids <- setdiff(model_ids, pedigree_pruned$id)
+  if(length(missing_ids) > 0) {
+    founders <- data.frame(id = missing_ids, dam = NA, sire = NA)
+    pedigree_extended <- rbind(pedigree_df, founders)
+  } else {
+    pedigree_extended <- pedigree_df
+  }
+  
+  # Prune again with extended pedigree
+  ped_ids_needed <- get_ancestors(model_ids, pedigree_extended)
+  pedigree_pruned <- pedigree_extended[pedigree_extended$id %in% ped_ids_needed, ]
+  
+  # Build the additive genetic relationship matrix
+  ped <- pedigree_pruned
+  names(ped) <- c("animal", "dam", "sire")
+  ped <- orderPed(ped)
+  
+  return(ped)
+}
+
+
+
+
 make_Amat <- function(focal_data, pedigree_df) {
 
   focal_data$ring <- as.character(focal_data$ring)
@@ -126,6 +187,27 @@ make_Amat <- function(focal_data, pedigree_df) {
   
   return(Amat)
 }
+
+
+
+
+simulate_pheno <- function(ped, VA, VE) {
+  # Get relationship matrix A from the pedigree
+  A <- as.matrix(nadiv::makeA(ped))
+  A <- A / mean(diag(A))
+  
+  # Simulate additive genetic values
+  a <- mvrnorm(n = 1, mu = rep(0, nrow(A)), Sigma = VA * A)
+  
+  # Simulate environmental noise
+  e <- rnorm(nrow(A), mean = 0, sd = sqrt(VE))
+  
+  # Phenotype = genetic + environmental
+  pheno <- a + e
+  
+  data.frame(animal = ped$animal, trait_1 = pheno)
+}
+
 
 # * MODEL DIAGNOSES * -----------------------------------------------------
 
@@ -292,11 +374,9 @@ calc_rpt_brms_slope <- function(brm_model, data, x_mean) {
 }
 
 
-
-
 get_rnd_effects <- function(mod_fit, hab_var) {
   
-  random_effects <- ranef(mod_fit, condVar = TRUE)[[1]][1]
+  random_effects <- ranef(mod_fit, condVar = TRUE)[[1]][2]
   slopes <- random_effects[[names(random_effects)[1]]][[hab_var]]
   intercepts <- random_effects[[names(random_effects)[1]]][["(Intercept)"]]        
   
@@ -324,6 +404,7 @@ repeat_func <- function(fit) {
 
 
 repeat_func_waBI <- function(fit) {
+  
   vc <- as.data.frame(VarCorr(fit))
   var_within <- vc[vc$grp == "ID_season", "vcov"]
   var_total <- sum(vc$vcov)
