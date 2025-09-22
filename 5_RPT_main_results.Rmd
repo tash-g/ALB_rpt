@@ -1,0 +1,1037 @@
+---
+title: "Main results"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+This script contains the main results from the paper, using outputs produced in the other scripts.
+
+Inputs:
+
+-   *species_colony*\_heritability_posteriors.RData
+
+-   all_posteriors_spatial_heritability.RData
+
+-   *species_colony*\_habitat_pref_heritability_posteriors.RData
+
+Outputs:
+
+-   Figure 6, Table 6
+
+# Set-up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
+
+# Define & load the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "ggridges", "gridExtra", "tidyr", "kableExtra", "stringr", "ggpubr") 
+
+source("RPT_functions.R")
+
+# Install packages not yet installed - change lib to library path
+# installed_packages <- packages %in% rownames(installed.packages())
+# 
+#  if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+## Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+
+## Make sure using dplyr select
+select <- dplyr::select
+
+## Set colours
+col_between <- "#91c5f2"
+col_within <- "#0b3860"
+
+col_effort <- "#1b9e77"
+col_bearing <- "#aaf0db"
+col_slope <- "#0d4e3a"
+col_used <- "#3cddac"
+
+```
+
+# Foraging effort
+
+## Figure 1: Repeatability by species & colony
+
+```{r fig1_effort_rpt}
+
+effort_rpt.full <- loadRData("Data_outputs/behavioural_repeatability_results.RData")
+
+## Recode behaviour
+effort_rpt.full %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"),
+      behaviour = factor(behaviour),              
+      behaviour = forcats::fct_rev(behaviour))
+
+# Pivot data longer for faceted plotting
+effort_rpt.long <- rpt_output.full %>%
+  mutate(rpt_within_total = rpt_within + rpt_across) %>%
+  pivot_longer(cols = c(rpt_within_total, rpt_within, rpt_across),
+               names_to = "repeatability_type",
+               values_to = "rpt") %>%
+  filter(repeatability_type != "rpt_within") %>%
+  mutate(spec_col = paste(species, colony, sep = " "))
+
+
+# Get median and 95% credible interval 
+effort_rpt.summary <- effort_rpt.long %>%
+  group_by(behaviour, repeatability_type, spec_col) %>%
+  summarise(
+    median_val = median(rpt, na.rm = TRUE),
+    lower_ci = quantile(rpt, 0.025, na.rm = TRUE),
+    upper_ci = quantile(rpt, 0.975, na.rm = TRUE) )
+
+
+rptplot <- ggplot(effort_rpt.summary, aes(x = median_val, y = behaviour, colour = repeatability_type)) +
+  geom_point(position = position_dodge(width = 0.6), size = 3) +
+  geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci),
+                 position = position_dodge(width = 0.6), height = 0.3) +
+  facet_wrap(~spec_col, nrow = 2) +
+  scale_colour_manual(values = c(col_between, col_within),
+                      labels = c("Between-season", "Within-season")) +
+  labs(x = "Repeatability (median, 95% CI)", y = "") +
+  theme_bw() +
+  theme(legend.position = "none")
+  
+
+png(filename = "Figures/MS Figures/FIG1_behaviour_repeatability.png", width = 10, height = 10, units = "in", res = 900)
+rptplot
+dev.off()
+
+```
+
+
+## Figure S1: Repeatability by repeat trips
+
+```{r FigS1_repeatability_by_repeats_figure}
+
+load("Data_outputs/SUPP_behaviour_rpt_test_Ntrips.RData")
+
+rep_testing.all %<>%
+  mutate(spec_col = case_when( colony == "kerguelen" ~ "BBAL Kerguelen",
+                               colony == "crozet" ~ "WAAL Crozet",
+                               colony == "birdis" & species == "bbal" ~ "BBAL Birdisland",
+                               TRUE ~ "WAAL Bird Island"),
+         behaviour = recode(behaviour,
+                "duration.hrs" = "Trip duration",
+                "transitions" = "Landings",
+                "transit_time.pct" = "Flight time",
+                "rest_time.pct" = "Rest time",
+                "transit_to_rest.ratio" = "Flight:Rest ratio"),
+        behaviour = factor(behaviour),              
+        behaviour = forcats::fct_rev(behaviour)) %>%
+  filter(level != "annual")
+
+rpt_test.plot <- ggplot(rep_testing.all, aes(x = n_trips, y = rpt, group = level, col = level)) +
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values = c(col_between, col_within),
+                   labels = c("Between season", "Within-season")) +
+  labs(x = "Minimum number of trips per individual-year", y = "Estimated repeatability") +
+  facet_grid(spec_col ~ behaviour) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+png(filename = "Figures/MS Figures/FIGS1_repeatability_by_sample.png", width = 12, height = 10, units = "in", res = 900)
+rpt_test.plot
+dev.off()
+
+
+```
+
+
+## Table S2: Repeatability parameters
+
+```{r tableS2_effort_rpt}
+
+effort_rpt.full <- loadRData("Data_outputs/behavioural_repeatability_results.RData")
+
+# Reorder for table
+effort_rpt.full$behaviour <- factor(effort_rpt.full$behaviour, levels = rev(c(
+  "transit_to_rest.ratio",
+  "transit_time.pct",
+  "rest_time.pct",
+  "transitions",
+  "duration.hrs")))
+
+effort_rpt.full %<>% arrange(species, behaviour) 
+
+# Summarise output
+effort_rpt.table <- effort_rpt.full %>%
+  group_by(species, colony, behaviour) %>%
+  summarise(var_ringSeason_x = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_ringSeason_x),
+              quantile(var_ringSeason_x, 0.025),
+              quantile(var_ringSeason_x, 0.975)),
+      
+            var_ring = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_ring),
+              quantile(var_ring, 0.025),
+              quantile(var_ring, 0.975)),
+      
+            var_season = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_season),
+              quantile(var_season, 0.025),
+              quantile(var_season, 0.975)),
+      
+            var_resid = sprintf("%.2f [%.2f, %.2f]",
+              mean(var_resid),
+              quantile(var_resid, 0.025),
+              quantile(var_resid, 0.975)),
+      
+            sd_slope = sprintf("%.2f [%.2f, %.2f]",
+              mean(sd_slope),
+              quantile(sd_slope, 0.025),
+              quantile(sd_slope, 0.975)),
+      
+            rpt_within = sprintf("%.2f [%.2f, %.2f]",
+              mean(rpt_within),
+              quantile(rpt_within, 0.025),
+              quantile(rpt_within, 0.975)),
+      
+            rpt_across = sprintf("%.2f [%.2f, %.2f]",
+              mean(rpt_across),
+              quantile(rpt_across, 0.025),
+              quantile(rpt_across, 0.975)),
+                  
+            n_trips = n_trips[1],
+            n_birds = n_birds[1]) %>%
+  select(-sd_slope)
+
+# Make table
+kable(effort_rpt.table, format = "html") %>%
+  kable_styling("striped", full_width = FALSE) %>%
+  column_spec(1, background = "white") %>%  # remove stripe from column 1
+  column_spec(2, background = "white") %>%  # remove stripe from column 2
+  collapse_rows(columns = c(1,2,10, 11)) %>%
+  kable_classic(font_size = 12)
+
+```
+
+# Space use
+
+## Figure 2: Bearing and space use differences
+
+```{r fig2_spatial_rpt, fig.dim=c(6,6)}
+
+# Bearings ====
+load("Data_outputs/bearing_repeatability_results.RData")
+
+# Pivot data longer for faceted plotting
+bearings_rpt.long <- bearing_posteriors.df %>%
+  select(c(spec_col, species, colony, rpt_within, rpt_across)) %>%
+  group_by(spec_col) %>%
+  pivot_longer(cols = c(rpt_within, rpt_across),
+               names_to = "repeatability_type",
+               values_to = "rpt") 
+
+# Get median and 95% credible interval 
+bearings_rpt.summary <- bearings_rpt.long %>%
+  group_by(repeatability_type, spec_col) %>%
+  summarise(
+    median_val = median(rpt, na.rm = TRUE),
+    lower_ci = quantile(rpt, 0.025, na.rm = TRUE),
+    upper_ci = quantile(rpt, 0.975, na.rm = TRUE) )
+
+## Relevel factors
+bearings_rpt.summary %<>%
+  mutate(spec_col = recode(spec_col,
+      bbal_birdis = "BBAL Bird Island",
+      bbal_ker = "BBAL Kerguelen",
+      waal_birdis = "WAAL Bird Island",
+      waal_cro = "WAAL Crozet")) %>%
+  arrange(spec_col) %>%
+  mutate(spec_col = factor(spec_col, levels = rev(unique(spec_col))))
+
+bearings_rpt.plot <- ggplot(bearings_rpt.summary, aes(x = median_val, y = spec_col, colour = repeatability_type)) +
+  geom_point(position = position_dodge(width = 0.6), size = 3) +
+  geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci),
+                 position = position_dodge(width = 0.6), height = 0.3) +
+  scale_colour_manual(values = c(col_between, col_within),
+                      labels = c("Between-season", "Within-season")) +
+  labs(x = "Repeatability in foraging bearing (median, 95% CI)", y = "") +
+  theme_bw() +
+  theme(legend.position = "none")
+  
+# BA comparisons ====
+
+load("Data_outputs/ba_means.RData")
+ba_means %<>% filter(!is.na(comp_season)) %>% filter(!is.na(comp_ind))
+
+## Drop within ind, between seasons for WAAL Bird Island
+ba_means %<>% filter(!(species == "waal" & colony == "birdis" & comp_ind == "within_ring" & comp_season == "between_season"))
+
+## Data wrangling
+ba_plot.df <- ba_means %>%
+  mutate(species = case_when(
+          species == "bbal" ~ "BBAL",
+          species == "waal" ~ "WAAL",
+          TRUE ~ species),
+    colony = case_when(
+      colony == "birdis" ~ "Bird Island",
+      colony == "ker" ~ "Kerguelen",
+      colony == "cro" ~ "Crozet",
+      TRUE ~ colony),
+    spec_col = paste(species, colony, sep = " ") ) %>%
+  rename(lower.CL = asymp.LCL,
+         upper.CL = asymp.UCL) %>%
+  mutate(behaviour = "overlap",
+         behav_comp = paste(behaviour, comp_ind, sep = "_"),
+         behav_comp = factor(behav_comp,
+                             levels = c(
+                               "overlap_between_ring",
+                               "overlap_within_ring",
+                               "bearings_between_ring",
+                               "bearings_within_ring"  )))
+
+ba_plot <- ggplot(ba_plot.df, aes(x = emmean, y = comp_ind, colour = comp_season)) +
+  geom_point(position = position_dodge(width = 0.4), size = 3) +
+  geom_errorbarh(aes(xmin = lower.CL, xmax = upper.CL),
+                height = 0.3,
+                position = position_dodge(width = 0.4)) +
+  labs(y = "", colour = "", x = "Bhattacharyya's Affinity") +
+  facet_wrap(~spec_col, nrow = 2) +
+  scale_colour_manual(
+    values = c(col_within, col_between)) +
+  scale_y_discrete(labels = c("Within individual", "Among individuals")) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+png(filename = "Figures/MS Figures/FIG2_spatial_results.png", width = 15, height = 7.5, units = "in", res = 900)
+ggarrange(bearings_rpt.plot, ba_plot, ncol = 2)
+dev.off()
+
+```
+
+## Figure S2: Foraging tracks for all populations
+
+```{r prep_GPS_tracks, eval = FALSE, include = FALSE}
+
+# Load all the GPS data ---------------
+
+bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
+cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
+
+spec_col <- c("bbal_ker", "bbal_birdis", "waal_cro", "waal_birdis")
+all_gps = vector(mode = "list", length = 4)
+
+for (i in 1:length(spec_col)) {
+  
+  my_gps <- loadRData(paste0("Data_inputs/", spec_col[i], "_gps_labelled.RData"))
+  
+  # gps_file <- list.files("Data_inputs/", pattern = paste0(spec_col[i], "_gps"))
+  # my_gps <- loadRData(paste0("Data_inputs/", gps_file)) 
+  
+  my_gps %<>%
+  mutate(ID = paste0(ring, "_", season, "_", boutID),
+         season = ifelse(as.numeric(format(as.Date(datetime), "%m")) < 9,
+                         as.numeric(format(as.Date(datetime), "%Y")),
+                         as.numeric(format(as.Date(datetime), "%Y")) + 1 ))
+  
+  ## Filter out individuals with only one trip
+  my_gps %<>% 
+    filter(loc == "trip") %>%
+    group_by(ring) %>%
+    mutate(n_trips = n_distinct(ID)) %>%
+    filter(n_trips > 1) %>%
+    select(-n_trips)
+  
+  ## Add species/colony info in
+  my_gps %<>%
+    mutate(spec_col = spec_col[i]) %>%
+    separate(spec_col, into = c("species", "colony"), sep = "_")
+
+  my_gps$col_lat = ifelse(my_gps$colony == "birdis", bi_coords$latitude, cro_coords$latitude)
+  my_gps$col_lon = ifelse(my_gps$colony == "birdis", bi_coords$longitude, cro_coords$longitude)
+  
+  all_gps[[i]] <- my_gps
+  
+}
+
+all_gps.df <- do.call("rbind", all_gps)
+save(all_gps.df, file = "Data_outputs/all_gps_data.RData")
+
+# Get the base world plot
+world <- ne_countries(scale = "medium", returnclass = "sf")
+proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+# Loop through data
+for (i in 1:length(spec_col)) {
+  
+  # Set projections (use same for Ker + Cro)
+   
+  if(grepl("birdis", spec_col[i])) {
+      proj.utm = "+proj=laea +lat_0=-54 +lon_0=-38.03 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+  } else {
+      proj.utm = "+proj=laea +lat_0=-46.358639 +lon_0=51.706972 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0"
+    }
+
+  world2 <- sf::st_transform(world, crs = proj.utm)
+  
+  # Project GPS data
+  my_species = strsplit(spec_col[i], "_")[[1]][1]
+  my_colony = strsplit(spec_col[i], "_")[[1]][2]
+  
+  my_gps.proj <- all_gps.df %>% filter(species == my_species & colony == my_colony) %>% arrange(ringYr, datetime)
+  coordinates(my_gps.proj) <- ~ longitude+latitude
+  proj4string(my_gps.proj) <- proj.dec
+  
+  my_gps.proj.sp <- spTransform(my_gps.proj, CRS(proj.utm))
+  my_gps.proj.df <- as.data.frame(my_gps.proj.sp)
+
+  # Project the colony
+  col_coords <- data.frame(longitude = my_gps.proj$col_lon[1], latitude = my_gps.proj$col_lat[1])
+  
+  if(grepl("ker", spec_col[i])) { col_coords <- data.frame(longitude = 70.2333, latitude = -49.6833) }
+    
+  coordinates(col_coords) <- ~longitude+latitude
+  proj4string(col_coords) <- proj.dec
+  colony.sp <- spTransform(col_coords, CRS(proj.utm))
+  colony.df <- as.data.frame(colony.sp)
+
+  
+  # Build the plot
+  
+  ## Set min/max limits
+  y_min = min(my_gps.proj.df$coords.x2 - 100000)
+  y_max = max(my_gps.proj.df$coords.x2 + 100000)
+  x_min = min(my_gps.proj.df$coords.x1 - 100000)
+  x_max = max(my_gps.proj.df$coords.x1 + 100000)
+   
+  gps_tracks.plot <- ggplot(data = world2) + 
+    geom_sf(fill = "cadetblue", colour = "cadetblue") +
+    coord_sf(crs = proj.utm, xlim = c(x_min, x_max), ylim = c(y_min, y_max),
+             label_axes = list(top = "E", left = "N", bottom = "E", right = "N")) +
+    geom_path(aes(x = coords.x1 , y = coords.x2, col = ringYr), size = 0.8,
+              dat = my_gps.proj.df, group = "identity") +
+    scale_x_continuous(breaks = seq(-180, 180, by = 5)) +
+    scale_y_continuous(breaks = seq(0, -90, by = -5)) + 
+    scale_colour_viridis_d() +
+    annotate("point", shape = 17, size = 3, (colony.df$coords.x1 + 100), colony.df$coords.x2) +
+    labs(caption = stringr::str_wrap( paste0(
+                          ifelse(my_species == "bbal", "Black-browed albatrosses", "Wandering albatrosses"),
+                          " at ", 
+                          ifelse(my_colony == "birdis", "Bird Island",
+                                 ifelse(my_colony == "cro", "Crozet", "Kerguelen"))))) +
+    theme(panel.background = element_rect(fill = "white"),
+          panel.grid.major = element_line(colour = "grey80"),
+          panel.border = element_rect(colour = "black", fill = NA),
+          axis.text.x.bottom = element_blank(),
+          axis.title.x.bottom = element_blank(),
+          axis.text.y.right = element_blank(),
+          axis.title.y.right = element_blank(),
+          axis.title.y.left = element_blank(),
+          axis.text.y.left = element_text(size = 10),
+          axis.text.x.top = element_text(size = 10),
+          legend.position = "none")
+
+  
+  assign(paste0(spec_col[i], "_gps.plot"), gps_tracks.plot)
+  plot_name <- paste0(spec_col[i], "_gps.plot")
+  save(list = plot_name, file = paste0("Data_outputs/R objects/", spec_col[i], "_gps_plot.RData"))
+  
+}
+
+
+```
+
+```{r figS2_gps_tracks }
+
+plot_files <- list.files(path = "Data_outputs/R objects/", pattern = "gps_plot")
+plot_paths <- paste0("Data_outputs/R objects/", plot_files)
+
+for (file in plot_paths) {
+  load(file)
+}
+
+png("Figures/MS Figures/FIGS2_all_gps_tracks.png", width = 10, height = 10, units = "in", res = 700)
+ggarrange(bba_kerguelen_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')), 
+          bba_birdis_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
+          waal_crozet_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
+          waal_birdis_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
+          ncol = 2, nrow = 2,
+          align = "h")
+dev.off()
+
+```
+
+## Figure S3: Example GPS tracks
+
+```{r example_gps_plots, fig.height=8, fig.width=10}
+
+load("Data_outputs/all_gps_data.RData")
+
+# Common parameters
+proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+world <- ne_countries(scale = "medium", returnclass = "sf")
+spec_col <- c("bbal_ker", "bbal_birdis", "waal_cro", "waal_birdis")
+
+targets <- c("bbal_birdis_1456598", "bbal_birdis_1441460", "bbal_birdis_1320517",
+             "bbal_ker_CF27498", "bbal_ker_CF39444", "bbal_ker_CF31429",
+             "waal_birdis_5145048", "waal_birdis_5144589", "waal_birdis_5132544",
+             "waal_cro_BS6563", "waal_cro_BS18853", "waal_cro_BS21258")
+
+all_gps.df %<>% mutate(plotID = paste(species, colony, ring, sep = "_"))
+
+for (i in 1:length(spec_col)) {
+  
+  my_species = strsplit(spec_col[i], "_")[[1]][1]
+  my_colony = strsplit(spec_col[i], "_")[[1]][2]
+  
+  # Get colony location
+  if(my_colony == "birdis") { colony.df = data.frame(Lon = -38.05, Lat = -54) } else {
+     colony.df = data.frame(Lon = 51.706972, Lat = -46.358639) }
+  
+  # Set projections
+  proj.utm <- paste0("+proj=laea +lat_0=", colony.df$Lat[1], " +lon_0=", colony.df$Lon[1],
+                     " +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0")
+  
+  ## Colony projection (for plotting)
+  coordinates(colony.df) <- ~Lon+Lat
+  proj4string(colony.df) <- proj.dec
+  colony.sp <- spTransform(colony.df, CRS(proj.utm))
+  colony.df <- as.data.frame(colony.sp)
+  
+  ## Get the base world plot
+  world2 <- sf::st_transform(world, crs = proj.utm)
+  
+  ## Subset GPS and project
+  targets_speccol <- targets[grepl(spec_col[i], targets)]
+  
+  track.proj <- all_gps.df %>% filter(plotID %in% targets_speccol)
+  coordinates(track.proj) <- ~ longitude+latitude
+  proj4string(track.proj) <- proj.dec
+  
+  track.proj.sp <- spTransform(track.proj, CRS(proj.utm))
+  track.proj.df <- as.data.frame(track.proj.sp)
+
+  ## Build the plot
+  my_xmin <- min(track.proj.df$coords.x1) - 10000
+  my_xmax <- max(track.proj.df$coords.x1) + 10000
+  my_ymin <- min(track.proj.df$coords.x2) - 10000
+  my_ymax <- max(track.proj.df$coords.x2) + 10000
+    
+
+  example_gps.plot <- ggplot(data = world2) + 
+      geom_sf(fill = "cadetblue", colour = "grey") +
+      coord_sf(crs = proj.utm, xlim = c(my_xmin, my_xmax), ylim = c(my_ymin, my_ymax), 
+               label_axes = list(top = "E", left = "N", bottom = "E", right = "N")) +
+      geom_path(aes(x = coords.x1, y = coords.x2, colour = ring), size = 1, dat = track.proj.df) +
+      scale_colour_viridis_d(name = NULL) +
+      labs(caption = stringr::str_wrap( paste0(
+                          ifelse(my_species == "bbal", "Black-browed albatrosses", "Wandering albatrosses"),
+                          " at ", 
+                          ifelse(my_colony == "birdis", "Bird Island",
+                                 ifelse(my_colony == "cro", "Crozet", "Kerguelen"))))) +
+      theme(panel.background = element_rect(fill = "white"), 
+            panel.grid.major = element_line(colour = "grey80"),
+            panel.border = element_rect(colour = "black", fill = NA),
+            axis.text.x.top = element_blank(), 
+            axis.title.x.top = element_blank(),
+            axis.ticks.x.top = element_blank(),
+            axis.title.x.bottom = element_blank(),
+            axis.text.y.right = element_blank(), 
+            axis.title.y.right = element_blank(),
+            axis.title.y.left = element_blank(),
+            legend.position = "none", 
+            plot.caption = element_text(face = "italic")) 
+  
+  assign(paste0(spec_col[i], "_example_gps.plot"), example_gps.plot)
+  plot_name <- paste0(spec_col[i], "_gps.plot")
+  save(list = plot_name, file = paste0("Data_outputs/R objects/", spec_col[i], "_example_gps_plot.RData"))
+  
+}
+
+png("Figures/MS Figures/FIGS3_spatial_repeatability_example_tracks.png", width = 10, height = 10, units = "in", res = 700)
+ggarrange(bba_kerguelen_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')), 
+          bba_birdis_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
+          waal_crozet_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
+          waal_birdis_example_gps.plot + theme(plot.margin = unit(c(0,0,1,0), 'lines')),
+          ncol = 2, nrow = 2,
+          align = "h")
+dev.off()
+
+```
+
+## Figure S4: Bearings from the colony
+
+```{r figS4_bearing_from_colony}
+
+load("Data_outputs/bearings_data.RData")
+
+bearings.df %<>% mutate(bearing_360 = ifelse(bearing_avg < 0, bearing_avg + 360, bearing_avg),
+                        spec_col = case_when(
+                            species == "bbal" & colony == "birdis" ~ "Black-browed albatrosses at Bird Island",
+                            species == "bbal" & colony == "ker" ~ "Black-browed albatrosses at Kerguelen",
+                            species == "waal" & colony == "birdis" ~ "Wandering albatrosses at Bird Island",
+                            species == "waal" & colony == "cro" ~ "Wandering albatrosses at Crozet"))
+breaks = seq(0, 360, 60)
+
+png(filename = "Figures/MS Figures/FIGS4_bearings_plot.png", width = 16, height = 4.5, units = "in", res = 900)
+ggplot(bearings.df, aes(x = bearing_360)) +
+  geom_histogram(binwidth = 10,
+                 fill = "skyblue", color = "black", alpha = 0.7) + 
+  coord_polar(start = 0) +
+  scale_x_continuous("", limits = c(0, 360), 
+                     breaks = breaks, 
+                     labels = paste0(breaks, "\u00B0")) +
+  labs(y = "Frequency") +
+  ggh4x::facet_grid2(. ~ spec_col, scales = "free_y", independent = "y") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12, hjust = 0.5),
+        axis.ticks.y = element_line(color = "black"))
+dev.off()
+
+```
+
+
+## Table S3: BA comparison statistics
+
+```{r tableS3_BA_comparison, echo = FALSE}
+
+load("Data_outputs/ba_model_summary.RData")
+
+# Reformat the table
+ba_summary %<>%
+ mutate(Species = toupper(species),
+        Colony = ifelse(colony == "birdis", "Bird Island",
+                         ifelse(colony == "cro", "Crozet",
+                                "Kerguelen")), 
+        Term = case_when(
+            Term == "(Intercept)"  ~ "Intercept",
+            Term == "comp_seasonbetween_season" ~ "Across seasons",
+            Term == "comp_indbetween_ring" ~ "Among individuals",
+            Term == "comp_indbetween_ring:comp_seasonbetween_season" ~ "Among individuals * Across seasons",
+            TRUE ~ "Inter-observation distance"),
+         Estimate = paste0(signif(Estimate, 4), " \u00B1 ", signif(Std_Error, 4)),
+         t_value = signif(t_value, 4),
+         p_value = ifelse(p_value < 0.0001, "0", format(round(p_value, 4), nsmall = 4, scientific = FALSE))) %>%
+  mutate(Term = factor(Term, levels = c(
+    "Intercept",
+    "Among individuals",
+    "Across seasons",
+    "Among individuals * Across seasons",
+    "Inter-observation distance"))) %>%
+  rename('t value' = t_value, 'p value' = p_value) %>%
+  select(-c(species, colony, Std_Error)) %>%
+  relocate(c(Species, Colony), .before = Term) %>%
+  arrange(Species, Colony, Term) %>%
+  mutate(CI = paste0("[", signif(CI_lower, 4), ", ", signif(CI_upper, 4), "]")) %>%
+  relocate(CI, .before = "t value") %>%
+  select(-c(CI_lower, CI_upper))
+         
+knitr::kable(ba_summary, format = "html", 
+             caption = '<span style="font-size: 12px;">Table 3. Model outputs for BA comparisons. Bhattacharyyas Affinity measures overlap in two utilisation distributions.".</span>', digits = 3) %>%
+  row_spec(which(ba_summary$`p value` < 0.05 & ba_summary$Term != "Intercept"), bold = TRUE) %>%
+  collapse_rows(columns = c(1, 2)) %>%
+  kable_styling(font_size = 9)
+
+
+```
+
+
+# Habitat 
+
+## Used habitat
+
+### Figure 3: Repeatability of used habitat
+
+```{r fig3_rpt_used } 
+
+load("Data_outputs/bbal_birdis_habitat_used_variances.RData")
+load("Data_outputs/bbal_ker_habitat_used_variances.RData")
+load("Data_outputs/waal_birdis_habitat_used_variances.RData")
+load("Data_outputs/waal_cro_habitat_used_variances.RData")
+
+used_variances <- rbind(bbal_birdis_var_used %>% mutate(spec_col = "BBAL Bird Island"),
+                        bbal_ker_var_used %>% mutate(spec_col = "BBAL Kerguelen"),
+                        waal_birdis_var_used %>% mutate(spec_col = "WAAL Bird Island"),
+                        waal_cro_var_used %>% mutate(spec_col = "WAAL Crozet"))
+
+# Wrangle the data into long form
+used_variances %<>%
+  select(-c(Effect, Variance, `Std. dev`)) %>%
+  distinct() %>%
+  group_by(spec_col) %>%
+  pivot_longer(cols = matches("_(within|across)$"),
+                   names_to = c(".value", "group"),
+                   names_pattern = "(.*)_(within|across)")
+# Change factors
+used_variances %<>%
+ mutate(Environment = recode(Environment,
+      "bathy" = "Bathymetry",
+      "chlA" = "Chlorophyll",
+      "SST" = "SST")) %>%
+  arrange(Environment) %>%
+  mutate(Environment = factor(Environment, levels = rev(unique(Environment))))
+
+rpt_used.plot <- ggplot(used_variances, aes(x = rpt, y = Environment, colour = group)) +
+  geom_point(position = position_dodge(width = 0.4), size = 3) +
+  geom_errorbarh(aes(xmin = LCL, xmax = UCL),
+                height = 0.3,
+                position = position_dodge(width = 0.4)) +
+  labs(y = "", colour = "", x = "Repeatability (95% CI)") +
+  facet_wrap(~spec_col, nrow = 2) +
+  scale_colour_manual(
+    values = c(col_between, col_within)) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+png(file = "Figures/MS Figures/FIG3_habitat_used_repeatability.png", width = 10, height = 10, units = "in", res = 300)
+rpt_used.plot
+dev.off()
+
+
+```
+
+
+### Figure S5: Random intercepts of habitat use
+
+```{r figS5_plot_used}
+
+load("Data_outputs/bbal_birdis_used_plot.RData")
+load("Data_outputs/bbal_ker_used_plot.RData")
+load("Data_outputs/waal_birdis_used_plot.RData")
+load("Data_outputs/waal_cro_used_plot.RData")
+
+png(file = "Figures/MS Figures/FIGS5_habitat_used_intercepts.png", width = 25, height = 17, units = "in", res = 300)
+ggarrange(bbal_birdis_used_plot, bbal_ker_used_plot,
+          waal_cro_used_plot, waal_birdis_used_plot,
+          ncol = 2, nrow = 2,
+          widths = c(1, 0.8))
+dev.off()
+
+```
+
+### Table S4: Habitat used variances
+
+```{r tableS4_habitat_used_variance}
+
+load("Data_outputs/bbal_birdis_habitat_used_variances.RData")
+load("Data_outputs/bbal_ker_habitat_used_variances.RData")
+load("Data_outputs/waal_birdis_habitat_used_variances.RData")
+load("Data_outputs/waal_cro_habitat_used_variances.RData")
+
+var.table <- rbind(bbal_birdis_var_used %>% mutate(Species = "BBAL", Colony = "Bird Island"), 
+                   bbal_ker_var_used %>% mutate(Species = "BBAL", Colony = "Kerguelen"), 
+                   waal_birdis_var_used %>% mutate(Species = "WAAL", Colony = "Bird Island"), 
+                   waal_birdis_var_used %>% mutate(Species = "WAAL", Colony = "Crozet")) %>%
+  mutate(Environment = case_when(
+    Environment == "bathy" ~ "Bathymetry",
+    Environment == "chlA" ~ "Chlorophyll-a",
+    TRUE ~ "SST" )) %>%
+  mutate(across(where(is.numeric), 
+                ~ ifelse(.x < 1e-4 & .x > 0, 
+                         "< 0.0001", 
+                         formatC(.x, digits = 2, format = "fg")))) %>%
+  filter(Effect == "ID_season" | Effect == "ID") %>%
+  rename(Level = Effect) %>%
+  relocate(c(Species, Colony), .before = Environment)
+
+kable(var.table, format = "html", 
+  caption = 'Table 1A. Variance associated with random intercepts from the habitat used model.') %>%
+ # row_spec(c(6,11), extra_css = "border-top: 1px solid;") %>%
+  collapse_rows(columns = c(1, 2, 3, 7, 8)) %>%
+  kable_classic(font_size = 12)
+
+```
+
+
+## Habitat preference
+
+### Figure 4: Preferred habitat
+
+```{r Fig4_habitat_pref}
+
+load("Data_outputs/bbal_birdis_selection_plot.RData")
+load("Data_outputs/bbal_ker_selection_plot.RData")
+load("Data_outputs/waal_birdis_selection_plot.RData")
+load("Data_outputs/waal_cro_selection_plot.RData")
+
+png(file = "Figures/MS Figures/FIG4_habitat_preference.png", width = 25, height = 15, units = "in", res = 300)
+ggarrange(bbal_birdis_pref_plot, 
+          bbal_ker_pref_plot,
+          waal_birdis_pref_plot,
+          waal_cro_pref_plot, 
+          ncol = 2, nrow = 2,
+          widths = c(1, 1))
+dev.off()
+
+```
+
+
+### Table S5: Conditional repeatability of preference
+
+```{r tableS5_rpt_preference}
+
+load("Data_outputs/bbal_birdis_condR_results.RData")
+load("Data_outputs/bbal_ker_condR_results.RData")
+load("Data_outputs/waal_birdis_condR_results.RData")
+load("Data_outputs/waal_cro_condR_results.RData")
+
+rpt.table <- rbind(bbal_birdis_condR_results, 
+                   bbal_ker_condR_results %>% rename(var_between = var_slope) %>% arrange(env), 
+                   waal_birdis_condR_results, 
+                   waal_cro_condR_results) %>%
+  mutate(med_rpt = med_rpt / 100) %>%
+  rename(Environment = env, 'Slope Variance' = var_between, "Median cond R" = med_rpt,
+         Species = species, Colony = colony, Level = level) %>%
+  relocate(Environment, .before = Level) %>%
+  mutate(Environment = case_when(
+    Environment == "bathy" ~ "Bathymetry",
+    Environment == "chl" ~ "Chlorophyll-a",
+    Environment == "sst" ~ "SST",
+    Environment == "dist_shelf_binon_shelf" ~ "On shelf",
+    Environment == "dist_shelf_binnear_break" ~ "Near shelf break",
+    Environment == "dist_shelf_binoff_shelf" ~ "Off shelf"),
+    Level = ifelse(Level == "Between", "Between", "Within")) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+  select(-marginal_R2) %>%
+  arrange(Species, Colony, Environment, Level)
+
+kable(rpt.table, format = "html") %>% 
+  collapse_rows(columns = c(1, 2, 3)) %>%
+  kable_classic(font_size = 12)
+
+```
+
+
+# Heritability
+
+## Figure 5: Plot heritability
+
+```{r plot_heritability}
+
+load("Data_outputs/heritability_posteriors_all.RData")
+
+heritability_plot <- ggplot(posteriors_all, aes(x = h2, y = behaviour, fill = group)) +
+  geom_density_ridges(alpha = 0.6, scale = 1) +
+  scale_fill_manual(values = c(
+    "effort" = col_effort,
+    "bearings" = col_bearing,
+    "slopes" = col_slope,
+    "used" = col_used)) +
+  facet_wrap(~spec_col, nrow = 1, ncol = 3, scales = "free_x") +
+  labs(x = "Posterior distribution for heritability (h²)", y = "") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+
+png(file = "Figures/MS Figures/FIG5_heritability.png", width = 15, height = 9, units = "in", res = 300)
+heritability_plot
+dev.off()
+
+```
+
+## Table S6: Posteriors of heritability
+
+```{r tableS6_heritability}
+
+load("Data_outputs/heritability_posteriors_all.RData")
+
+heritability_table <- posteriors_all %>%
+  group_by(spec_col, behaviour) %>%
+  summarise(
+    median = median(h2),
+    lower = quantile(h2, 0.025),
+    upper = quantile(h2, 0.975)) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+  mutate("Estimated h2" = paste0(median, " [", lower, ", ", upper, "]")) %>%
+  select(c(spec_col, behaviour, 'Estimated h2')) %>%
+  arrange(spec_col, behaviour) %>%
+  separate(spec_col, into = c("Species", "Colony"), sep = " ", extra = "merge") %>%
+  rename(Behaviour = behaviour)
+ 
+heritability_table$Behaviour <- factor(
+  heritability_table$Behaviour,
+  levels = rev(levels(heritability_table$Behaviour)))
+
+heritability_table %<>% arrange(Species, Colony, Behaviour)
+
+kable(heritability_table, format = "html") %>% 
+  collapse_rows(columns = c(1, 2)) %>%
+  kable_classic(font_size = 12)
+
+```
+
+
+# Overall repeatability table
+
+## Table S7: Repeatabilities summary
+
+```{r table_rpt_overall}
+
+# Effort ====
+
+effort_rpt.full <- loadRData("Data_outputs/behavioural_repeatability_results.RData")
+
+## Recode behaviour
+effort_rpt.full %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "transitions" = "Landings",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time",
+      "transit_to_rest.ratio" = "Flight:Rest ratio"),
+      behaviour = factor(behaviour),              
+      behaviour = forcats::fct_rev(behaviour))
+
+# Pivot data longer for faceted plotting
+effort_rpt.summary <- effort_rpt.full %>%
+  select(c(species, colony, behaviour, rpt_within, rpt_across)) %>%
+  mutate(spec_col = paste(species, colony, sep = " ")) %>%
+  pivot_longer(cols = c(rpt_within, rpt_across),
+               names_to = "repeatability_type",
+               values_to = "rpt") %>%
+  group_by(spec_col, repeatability_type, behaviour) %>%
+  summarise(
+    median_val = median(rpt, na.rm = TRUE),
+    lower_ci = quantile(rpt, 0.025, na.rm = TRUE),
+    upper_ci = quantile(rpt, 0.975, na.rm = TRUE) ) %>%
+  mutate(
+    formatted = paste0(
+      format_numbers(median_val), " [",
+      format_numbers(lower_ci), ", ",
+      format_numbers(upper_ci), "]")) %>%
+  select(spec_col, behaviour, repeatability_type, formatted) %>%
+  pivot_wider(
+    names_from = repeatability_type,
+    values_from = formatted  )
+
+
+# Spatial ====
+
+load("Data_outputs/bearing_repeatability_results.RData")
+
+bearings_rpt.summary <- bearing_posteriors.df %>%
+  select(c(spec_col, species, colony, rpt_within, rpt_across)) %>%
+  group_by(spec_col) %>%
+  pivot_longer(cols = c(rpt_within, rpt_across),
+               names_to = "repeatability_type",
+               values_to = "rpt") %>%
+  group_by(spec_col, repeatability_type) %>%
+  summarise(
+    median_val = median(rpt, na.rm = TRUE),
+    lower_ci = quantile(rpt, 0.025, na.rm = TRUE),
+    upper_ci = quantile(rpt, 0.975, na.rm = TRUE) ) %>%
+  mutate(
+    formatted = paste0(
+      format_numbers(median_val), " [",
+      format_numbers(lower_ci), ", ",
+      format_numbers(upper_ci), "]"),
+    behaviour = "Foraging bearing",
+    spec_col = recode(spec_col,
+    "bbal_birdis" = "BBAL Bird Island",
+    "bbal_ker" = "BBAL Kerguelen",
+    "waal_birdis" = "WAAL Bird Island",
+    "waal_cro" = "WAAL Crozet")) %>%
+  select(spec_col, behaviour, repeatability_type, formatted) %>%
+  pivot_wider(
+    names_from = repeatability_type,
+    values_from = formatted)
+  
+  
+# Habitat used ====
+
+load("Data_outputs/bbal_birdis_habitat_used_variances.RData")
+load("Data_outputs/bbal_ker_habitat_used_variances.RData")
+load("Data_outputs/waal_birdis_habitat_used_variances.RData")
+load("Data_outputs/waal_cro_habitat_used_variances.RData")
+
+used_rpt.summary <- rbind(bbal_birdis_var_used %>% mutate(Species = "BBAL", Colony = "Bird Island"), 
+                   bbal_ker_var_used %>% mutate(Species = "BBAL", Colony = "Kerguelen"), 
+                   waal_birdis_var_used %>% mutate(Species = "WAAL", Colony = "Bird Island"), 
+                   waal_cro_var_used %>% mutate(Species = "WAAL", Colony = "Crozet")) %>%
+  mutate(behaviour = case_when(
+    Environment == "bathy" ~ "Bathymetry used",
+    Environment == "chlA" ~ "Chlorophyll-a used",
+    TRUE ~ "SST used" ),
+    spec_col = paste0(Species, " ", Colony)) %>%
+  mutate(rpt_across =  paste0(
+        format_numbers(rpt_across), " [",
+        format_numbers(LCL_across), ", ",
+        format_numbers(UCL_across), "]"),
+      rpt_within =  paste0(
+        format_numbers(rpt_within), " [",
+        format_numbers(LCL_within), ", ",
+        format_numbers(UCL_within), "]")) %>%
+  select(c(spec_col, behaviour, rpt_across, rpt_within)) %>%
+  distinct()
+
+# Habitat preference ====
+
+load("Data_outputs/bbal_birdis_condR_results.RData")
+load("Data_outputs/bbal_ker_condR_results.RData")
+load("Data_outputs/waal_birdis_condR_results.RData")
+load("Data_outputs/waal_cro_condR_results.RData")
+
+preference_rpt.summary <- rbind(bbal_birdis_condR_results, 
+                   bbal_ker_condR_results %>% arrange(env), 
+                   waal_birdis_condR_results, 
+                   waal_cro_condR_results) %>%
+  mutate(med_rpt = ifelse(env == "chl" | env == "sst" | env == "bathy", 
+                          med_rpt / 100,
+                          med_rpt),
+         spec_col = paste0(species, " ", colony),
+         med_rpt = ifelse(is.na(med_rpt), R2, med_rpt),
+         level = tolower(level),
+         env = recode(env,
+            "bathy" = "Bathymetry preference",
+            "chl" = "Chlorophyll-a preference",
+            "sst" = "SST preference",
+            "dist_shelf_binon_shelf" = "On shelf preference",
+            "dist_shelf_binnear_break" = "Near shelf break preference",
+            "dist_shelf_binoff_shelf" = "Off shelf preference"),
+         level = ifelse(level == "between", "across", "within")) %>%
+  mutate(med_rpt =  paste0(
+        format_numbers(med_rpt), " [",
+        format_numbers(LCL_rpt), ", ",
+        format_numbers(UCL_rpt), "]")) %>%
+  select(c(spec_col, env, level, med_rpt)) %>%
+  pivot_wider(
+    names_from = level,
+    names_prefix = "rpt_",
+    values_from = med_rpt ) %>%
+  rename(behaviour = env) %>%
+  relocate(spec_col, behaviour, rpt_across, rpt_within)
+
+# Bind all repeatability values
+
+behaviour_order <- c("Flight time", "Flight:Rest ratio", "Landings", "Rest time", "Trip duration",
+                     "Foraging bearing",
+                     "Bathymetry used", "Chlorophyll-a used", "SST used",
+                     "Bathymetry preference", "Chlorophyll-a preference", "SST preference", "Near shelf break preference",
+                     "On shelf preference", "Off shelf preference")
+
+rpt_all.summary <- rbind(effort_rpt.summary,
+                         bearings_rpt.summary,
+                         used_rpt.summary,
+                         preference_rpt.summary) %>%
+  mutate(behaviour = factor(behaviour, levels = behaviour_order)) %>%
+  arrange(spec_col, behaviour)
+
+```
+
+```{r tableS7_all_rpt}
+
+kable(rpt_all.summary, format = "html") %>%
+  collapse_rows(columns = 1) %>%
+  kable_classic(font_size = 12)
+
+```
