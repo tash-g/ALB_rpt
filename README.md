@@ -1,4 +1,4 @@
-# **No individual or heritable signal in foraging of wide-ranging albatrosses**
+# **Weak individual consistency and no heritable signal in foraging of wide-ranging albatrosses**
 
 Natasha Gillies, Richard A. Phillips, Henri Weimerskirch, Jonathan Potts, Denis Réale, Alastair J. Wilson, Frédéric Angelier, Christophe Barbraud, Ashley Bennison, Karine Delord, Prescillia Lemesle, Samuel Peroteau, Andrew G. Wood, José C. Xavier, Samantha C. Patrick.
 
@@ -6,7 +6,7 @@ Natasha Gillies, Richard A. Phillips, Henri Weimerskirch, Jonathan Potts, Denis 
 
 This repository contains scripts and data to recreate the main results and figures of the following in-prep manuscript:
 
-No individual or heritable signal in foraging of wide-ranging albatrosses. Gillies N, Phillips RA, Weimerskirch H, Potts J, Réale D, Wilson AJ, Angelier F, Barbraud C, Bennison A, Delord K, Lemesle P, Peroteau S, Wood AG, Xavier JC, Patrick SC
+Weak individual consistency and no heritable signal in foraging of wide-ranging albatrosses. Gillies N, Phillips RA, Weimerskirch H, Potts J, Réale D, Wilson AJ, Angelier F, Barbraud C, Bennison A, Delord K, Lemesle P, Peroteau S, Wood AG, Xavier JC, Patrick SC
 
 ## Environment
 
@@ -14,7 +14,7 @@ No individual or heritable signal in foraging of wide-ranging albatrosses. Gilli
 
 -   Platform: x86_64-w64-mingw32 (Windows)
 
--   Key R packages required: `adehabitatHR`, `betareg`, `brms`, `corrplot`, `data.table`, `DHARMa`, `dplyr`, `ecmwfr`, `emmeans`, `ggplot2`, `ggpubr`, `ggridges`, `glmmTMB`, `gridExtra`, `igraph`, `kableExtra`, `lubridate`, `MasterBayes`, `magrittr`, `MCMCglmm`, `MASS`, `momentuHMM`, `nadiv`, `pheatmap`, `purrr`, `raster`, `rnaturalearth`, `reticulate`, `sf`, `stringr`, `terra`, `tidyr`, `readxl`
+-   Key R packages required: `adehabitatHR`, `betareg`, `brms`, `corrplot`, `data.table`, `DHARMa`, `dplyr`, `ecmwfr`, `emmeans`, `ggplot2`, `ggpubr`, `ggridges`, `glmmTMB`, `gridExtra`, `igraph`, `kableExtra`, `lubridate`, `MASS`, `MasterBayes`, `magrittr`, `MCMCglmm`, `momentuHMM`, `mvtnorm`, `nadiv`, `pheatmap`, `purrr`, `raster`, `rnaturalearth`, `reticulate`, `sf`, `stringr`, `terra`, `tidyr`, `readxl`
 
 ## Scripts
 
@@ -52,36 +52,23 @@ These scripts are used to run the main analyses in the text. They are written as
 
 -   **1_RPT_foraging_effort.Rmd**: Analyses for repeatability of foraging effort. Fits models to quantify the consistency of individual foraging behaviour across trips and estimate heritability using the pedigree information.
     -   *Inputs*: `{species}_{colony}_individual_trips_summary.RData`; `ind_meta.RData`; `{species}_{colony}_pedigree.csv`
-    -   *Outputs*: Figure 1, Table 1, Figure SX; `behavioural_repeatability_data.RData`; `behavioural_repeatability_results.RData`; `{species}_{colony}_brms_behaviour_repeatability_{behaviour}.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`
+    -   *Outputs*: `behavioural_repeatability_data.RData`; `behavioural_repeatability_results.RData`; `{species}_{colony}_brms_behaviour_repeatability_{behaviour}.RData`; `behaviour_heritability_posteriors.RData`
 -   **2_RPT_spatial.Rmd**: Analyses testing for spatial repeatability by examining consistency in foraging bearings and space use, using Bhattacharyya’s affinity.
     -   *Inputs*: `{species}_{colony}_gps_labelled.RData`; `{species}_{colony}_pedigree.csv`
-    -   *Outputs*: Figures 2, 3, SX, & Sx; `all_gps.RData`; `{species}_{colony}_ba_comparison.RData`; `ba_means.RData`; `ba_model_summary.RData`; `bearings_data.RData`; `{species}_{colony}_bearing_differences.RData`; `bearing_means.RData`; `bearing_models_summary.RData`
+    -   *Outputs*: `all_gps.RData`; `all_posteriors_spatial_heritability.RData`; `{species}_{colony}_ba_comparison.RData`; `ba_means.RData`; `ba_model_summary.RData`; `bearings_data.RData`; `{species}_{colony}_bearing_differences.RData`; `bearing_means.RData`; `bearing_models_summary.RData`; `bearing_repeatability_results.RData`
 -   **3_RPT_habitat_preference.Rmd**: Analyses for repeatability in habitat use and preference by individual birds. Quantifies individual consistency in habitat selection and links environmental covariates to usage patterns.
     -   *Inputs*: `{species}_{colony}_sst-bathy-chla_data_population_level.RData`; `{species}_{colony}_pedigree.csv`
-    -   *Outputs*: Figures 4 & 5, Tables 4 & 5; `{species}_{colony}_glmm_{between/within}_{environment}.RData`; `{species}_{colony}_habitat_data.RData`; `{species}_{colony}_habitat_slopes.RData`; `{species}_{colony}_habitat_used_ranef.RData`; `{species}_{colony}_habitat_used_variances.RData`
--   **4_RPT_heritability.Rmd**: Combines heritability estimates from other analyses, generates summary plots, and compiles a table of results.
-    -   *Inputs*: `all_posteriors_spatial_heritability.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`; `{species}_{colony}_habitat_pref_heritability_posteriors.RData`
-    -   *Outputs*: Figure 6, Table 6
+    -   *Outputs*: `{species}_{colony}_glmm_{between/within}_{environment}.RData`; `{species}_{colony}_habitat_data.RData`; `{species}_{colony}_habitat_slopes.RData`; `{species}_{colony}_habitat_used_ranef.RData`; `{species}_{colony}_habitat_used_variances.RData`; `{species}_{colony}_heritability_{pref/used}_{environment}.RData`; `{species}_{colony}_heritability_{pref/used}_posteriors.RData`
+-   **4_RPT_heritability.Rmd**: Combines heritability estimates from other analyses; runs a power analysis on pedigrees.
+    -   *Inputs*: `all_posteriors_spatial_heritability.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`; `{species}_{colony}_habitat_pref_heritability_posteriors.RData`; `{species}_{colony}_pedigree.csv`
+    -   *Outputs*: `heritability_posteriors_all.RData`; `{species}_{colony}_heritability_power_analysis.RData`
+-   **5_RPT_main_results.Rmd**: Produces all plots and tables from the manuscript.
+    -   *Inputs*: `all_posteriors_spatial_heritability.RData`; `ba_means.RData`; `bearings_data.RData`; `ba_model_summary.RData`; `bearing_repeatability_results.RData`; `behavioural_repeatability_results.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`; `{species}_{colony}_condR_results.RData`; `{species}_{colony}_habitat_{pref/used}_heritability_posteriors.RData`; `heritability_posteriors_all.RData`; `{species}_{colony}_{selection/used}_plot.RData`; `{species}_{colony}_habitat_used_variances.RData`; `{species}_{colony}_gps_labelled.RData`; `SUPP_behaviour_rpt_test_Ntrips.RData`
+    -   *Outputs*: Figures 1-5; Figures S1-S5; Tables S2-S7
 
 ## Data inputs
 
 These are the raw and processed datasets used as inputs to the scripts listed above. Files are listed in alphabetical order by their description suffix (i.e. ignoring leading species/colony demarker). Other files produced during the analyses are not presented here.
-
--   `{BAS/Chize}_demo_complete.RData`: Demographic and breeding information for individuals and pairs.
-
-    -   *bird1*, *bird2*: Unique IDs for the pair members;
-    -   *season*: Breeding season;
-    -   *pairID*: Unique identifier for the pair (combination of bird1 and bird2);
-    -   *rs*: Reproductive success code;
-    -   *colony*: Breeding colony;
-    -   *species*: Species code;
-    -   *nest*: Nest identifier;
-    -   *lay_date*: Date egg was laid;
-    -   *hatch_date*: Date chick hatched;
-    -   *fail_date*: Date breeding attempt failed (if applicable);
-    -   *fledge_date*: Date chick fledged (if successful);
-    -   *bird1_sex*, *bird2_sex*: Sex of each bird;
-    -   *bird1_birthYr*, *bird2_birthYr*: Hatch year of each bird.
 
 -   `{species}_{colony}_available_pnts_population_level.RData`: Dataset of used and available points for habitat-use analyses, at the population level. Each row represents a used (observed) or available (sampled) location.
 
@@ -107,6 +94,29 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *lay_date*: Date egg was laid;
     -   *hatch_date*: Date chick hatched.
 
+-   `{BAS/Chize}_demo_complete.RData`: Demographic and breeding information for individuals and pairs.
+
+    -   *bird1*, *bird2*: Unique IDs for the pair members;
+    -   *season*: Breeding season;
+    -   *pairID*: Unique identifier for the pair (combination of bird1 and bird2);
+    -   *rs*: Reproductive success code;
+    -   *colony*: Breeding colony;
+    -   *species*: Species code;
+    -   *nest*: Nest identifier;
+    -   *lay_date*: Date egg was laid;
+    -   *hatch_date*: Date chick hatched;
+    -   *fail_date*: Date breeding attempt failed (if applicable);
+    -   *fledge_date*: Date chick fledged (if successful);
+    -   *bird1_sex*, *bird2_sex*: Sex of each bird;
+    -   *bird1_birthYr*, *bird2_birthYr*: Hatch year of each bird.
+    
+-   `ind_meta.RData`: Individual-level metadata, summarised from the demographic dataset (`{BAS/Chize}_all_demo.RData`).
+
+    -   *ring*: Unique bird ID;
+    -   *sex*: Sex of the bird;
+    -   *species*: Species code;
+    -   *birthYr*: Hatch year of the bird.
+
 -   `{species}_{colony}_gls_{dates}.RData`: Raw GLS (geolocator) data, including wet–dry immersion records. Each row represents a recorded timepoint for an individual bird.
 
     -   *ring*: Unique bird ID;
@@ -117,16 +127,6 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *immersion*: Immersion value (0-200);
     -   *partner*: Partner bird ID;
     -   *rs*: Reproductive success code.
-
--   `{species}_{colony}_gps_{dates}.RData`: Raw GPS data from tracking devices. Each row represents a location fix for an individual bird.
-
-    -   *season*: Breeding season during which the track was recorded;
-    -   *species*: Species code (BBAL or WAAL);
-    -   *ring*: Unique bird ID;
-    -   *datetime*: Timestamp of location fix;
-    -   *longitude*, *latitude*: Geographic coordinates;
-    -   *year*: Calendar year of the fix;
-    -   *ringYr*: Bird ID concatenated with year (unique individual-year identifier).
 
 -   `{species}_{colony}_gls_labelled.RData`: GLS trips processed and labelled with trip IDs and behavioural bouts.
 
@@ -139,6 +139,16 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *dur.mins*: Duration of the dry/wet bout in minutes;
     -   *loc*: Location estimate associated with the bout; on foraging trip or at colony (trip or col);
     -   *tripID*: Unique identifier for the foraging trip.
+
+-   `{species}_{colony}_gps_{dates}.RData`: Raw GPS data from tracking devices. Each row represents a location fix for an individual bird.
+
+    -   *season*: Breeding season during which the track was recorded;
+    -   *species*: Species code (BBAL or WAAL);
+    -   *ring*: Unique bird ID;
+    -   *datetime*: Timestamp of location fix;
+    -   *longitude*, *latitude*: Geographic coordinates;
+    -   *year*: Calendar year of the fix;
+    -   *ringYr*: Bird ID concatenated with year (unique individual-year identifier).
 
 -   `{species}_{colony}_gps_labelled.RData`: GPS trips processed and labelled with trip IDs and behavioural bouts.
 
@@ -163,13 +173,6 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *phase*: Breeding phase during which the trip occurred.
 
 -   `{species}_{colony}_habitat_data.RData`: GLS trips processed and labelled with trip IDs and behavioural bouts.
-
--   `ind_meta.RData`: Individual-level metadata, summarised from the demographic dataset (`{BAS/Chize}_all_demo.RData`).
-
-    -   *ring*: Unique bird ID;
-    -   *sex*: Sex of the bird;
-    -   *species*: Species code;
-    -   *birthYr*: Hatch year of the bird.
 
 -   `{species}_{colony}_pedigree.csv`: Pedigree information for individuals used in repeatability and heritability analyses. When sex was unknown, dams and sires were randomly assigned.
 
