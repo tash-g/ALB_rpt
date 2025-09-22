@@ -26,7 +26,7 @@ Outputs:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
 # Define & load the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "ggridges") 
+packages <- c("dplyr", "magrittr", "ggplot2", "ggridges", "MasterBayes", "mvtnorm", "MASS", "MCMCglmm") 
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -47,9 +47,131 @@ select <- dplyr::select
 col_effort <- "#1b9e77"
 col_bearing <- "#aaf0db"
 col_slope <- "#0d4e3a"
+col_used <- "#3cddac"
 
+source("RPT_functions.R")
 
 ```
+
+# Power analysis
+
+```{r power_analysis}
+
+# CHANGE THIS BIT TO CYCLE THROUGH EACH COLONY #
+
+focal_pop <- "waal_cro" # bbal_birdis  waal_birdis   waal_cro
+my_species <- strsplit(focal_pop, "_")[[1]][1]
+my_colony <- strsplit(focal_pop, "_")[[1]][2]
+
+# Load data ====
+
+# Prune to the largest dataset (foraging effort)
+load("Data_inputs/behavioural_repeatability_data.RData")
+
+focal.dat <- rep_data %>% filter(species == my_species & colony == my_colony)
+pedigree.df <- read.csv(paste0("Data_inputs/", focal_pop, "_pedigree.csv")) %>% select(-Year)
+
+## Fix some dam/sire encoding
+pedigree.df$sire[pedigree.df$sire == "0"] <- NA
+
+pedigree.df$sire[pedigree.df$id == "1271009"] <- "1318880"
+pedigree.df$dam[pedigree.df$id == "1271009"] <- "1318939"
+
+pedigree.df$sire[pedigree.df$id == "1434383"] <- "1139670"
+pedigree.df$dam[pedigree.df$id == "1434383"] <- "1146056"
+
+pedigree.df$sire[pedigree.df$id == "4003739"] <- "5116152"
+pedigree.df$dam[pedigree.df$id == "4003739"] <- "5142862"
+
+pedigree.df$sire[pedigree.df$id == "4003674"] <- "4000720"
+pedigree.df$dam[pedigree.df$id == "4003674"] <- "5110290"
+
+pedigree.df$sire[pedigree.df$id == "5144330"] <- "5093486"
+pedigree.df$dam[pedigree.df$id == "5144330"] <- "5097831"
+
+names(pedigree.df) <- c("id", "dam", "sire")
+ped <- prep_ped(focal.dat, pedigree.df) 
+
+
+# Simulate genetic analyis ====
+all_va_results <- data.frame(VA = numeric(),
+                             rep = integer(),
+                             posterior = numeric(),
+                             cilow = numeric(),
+                             cihigh = numeric())
+
+# Set parameters
+VA <- seq(from=0.0, to =0.3, by=0.02)
+nrep <- 1000
+
+## Make inverse
+ainv <- inverseA(ped)
+
+## Set priors
+prior <- list(
+  G = list(G1 = list(V = 1, nu = 0.002)),  # weakly informative prior for animal
+  R = list(V = 1, nu = 0.002)              # residual
+)
+
+
+## Set progress bar
+n_total <- length(VA) * nrep
+pb <- txtProgressBar(min = 0, max = n_total, style = 3)
+counter <- 0
+
+for (i in 1:length(VA))  {
+    
+    va_results <- expand.grid(VA=VA[i], rep=1:nrep, posterior=NA, cilow=NA, cihigh=NA)
+
+    for(k in 1:nrep){
+       
+      xP <- simulate_pheno(ped, VA = VA[i], VE = 1 - VA[i]) 
+     
+      # wrap the MCMCglmm fit in tryCatch
+      fit <- tryCatch({
+        m0sim <- MCMCglmm(data = xP,
+                          fixed = trait_1 ~ 1,
+                          random =~ animal,
+                          ginverse = list(animal = ainv$Ainv),
+                          verbose = FALSE)
+        
+        h2 <- m0sim$VCV[,1] / (m0sim$VCV[,1] + m0sim$VCV[,2])
+        
+        c(median(h2), HPDinterval(h2)[1], HPDinterval(h2)[2])
+        
+      }, error = function(e) {
+        # return NAs if it fails
+        c(NA, NA, NA)
+      })
+      
+      va_results[va_results$rep == k, c("posterior","cilow","cihigh")] <- fit
+      
+      ## Update progress bar
+      counter <- counter + 1
+      setTxtProgressBar(pb, counter)
+    
+    }
+   
+    all_va_results <- rbind(all_va_results, va_results)
+  
+  }
+
+save(all_va_results, file = paste0("Data_outputs/", focal_pop, "_heritability_power_analysis.RData"))
+
+ggplot(all_va_results, aes(x=VA, y=posterior)) + 
+  geom_point() 
+
+ggplot(all_va_results, aes(x=VA, y=cilow)) + 
+  geom_point() 
+
+all_va_results %>% 
+  group_by(VA) %>%
+  summarise(coverage=mean(VA<=cihigh & VA>=cilow, na.rm = T), 
+            power=mean(cilow>=quantile(all_va_results$posterior[all_va_results$VA==0], probs = 0.975), na.rm = T))
+
+```
+
+# Combine posteriors
 
 ```{r combine_posteriors}
 
@@ -86,6 +208,16 @@ waal_cro.slopes <- loadRData("Data_outputs/waal_cro_habitat_pref_heritability_po
 posteriors_slopes <- rbind(bbal_birdis.slopes, waal_birdis.slopes, waal_cro.slopes)
 
 
+
+# Habitat used ====
+
+bbal_birdis.used <- loadRData("Data_outputs/bbal_birdis_habitat_used_heritability_posteriors.RData") %>% mutate(spec_col = "BBAL Bird Island")
+waal_birdis.used <- loadRData("Data_outputs/waal_birdis_habitat_used_heritability_posteriors.RData") %>% mutate(spec_col = "WAAL Bird Island")
+waal_cro.used <- loadRData("Data_outputs/waal_cro_habitat_used_heritability_posteriors.RData") %>% mutate(spec_col = "WAAL Crozet")
+
+posteriors_used <- rbind(bbal_birdis.used, waal_birdis.used, waal_cro.used)
+
+
 # Bind the behaviours into one plot ====
 
 posteriors_effort %<>%
@@ -107,92 +239,32 @@ posteriors_slopes %<>%
     behaviour,
     levels = rev(c("Bathymetry preference", "Chlorophyll preference", "SST preference"))))
 
-posteriors_all <- rbind(posteriors_effort, posteriors_bearings, posteriors_slopes) 
+posteriors_used %<>%
+  rename(behaviour = env) %>%
+  mutate(behaviour = paste0(behaviour, " used"),
+         group = "used") %>%
+  relocate(c(spec_col, h2), .before = behaviour) %>%
+  mutate(behaviour = factor(
+    behaviour,
+    levels = rev(c("Bathymetry used", "Chlorophyll used", "SST used"))))
+
+posteriors_all <- rbind(posteriors_effort, posteriors_bearings, posteriors_slopes, posteriors_used) 
 
 # Change ordering for plot/table
 posteriors_all %<>%
    mutate(behaviour = factor(behaviour, 
                              levels = c("Trip duration", "Rest time", "Landings", "Flight:Rest ratio", "Flight time",
                                         "Foraging bearing",
-                                        "Bathymetry preference", "Chlorophyll preference", "SST preference"))) %>%
+                                        "Bathymetry preference", "Chlorophyll preference", "SST preference",
+                                        "Bathymetry used", "Chlorophyll used", "SST used"))) %>%
    arrange(spec_col, behaviour)
 
 posteriors_all$behaviour <- factor(
   posteriors_all$behaviour,
   levels = rev(levels(posteriors_all$behaviour)))
 
-```
-
-#### Figure 6: Heritability plot
-
-```{r plot_heritability}
-
-# heritability.summary <- posteriors_all %>%
-#   group_by(spec_col, behaviour, group) %>%
-#   summarise(
-#     median_val = median(h2, na.rm = TRUE),
-#     lower_ci = quantile(h2, 0.025, na.rm = TRUE),
-#     upper_ci = quantile(h2, 0.975, na.rm = TRUE) )
-# 
-# 
-#  ggplot(heritability.summary, aes(x = median_val, y = behaviour, colour = group)) +
-#   geom_point(position = position_dodge(width = 0.6), size = 3) +
-#   geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci),
-#                  position = position_dodge(width = 0.6), height = 0.3) +
-#   scale_colour_manual(values = c(
-#     "effort" = col_effort,
-#     "bearings" = col_bearing,
-#     "slopes" = col_slope)) +
-#   facet_wrap(~spec_col, nrow = 1, ncol = 3, scales = "free_x") +
-#   labs(x = "Heritability h² (median, 95% CI)", y = "") +
-#   theme_bw() +
-#   theme(legend.position = "none")
- 
-
-heritability_plot <- ggplot(posteriors_all, aes(x = h2, y = behaviour, fill = group)) +
-  geom_density_ridges(alpha = 0.6, scale = 1) +
-  scale_fill_manual(values = c(
-    "effort" = col_effort,
-    "bearings" = col_bearing,
-    "slopes" = col_slope)) +
-  facet_wrap(~spec_col, nrow = 1, ncol = 3, scales = "free_x") +
-  labs(x = "Posterior distribution for heritability (h²)", y = "") +
-  theme_bw() +
-  theme(legend.position = "none")
-
-
-png(file = "Figures/MS Figures/FIG6_heritability.png", width = 15, height = 8, units = "in", res = 300)
-heritability_plot
-dev.off()
+save(posteriors_all, file = "Data_outputs/heritability_posteriors_all.RData")
 
 ```
 
-#### Table 6: Heritability table
 
-```{r table_heritability}
-
-heritability_table <- posteriors_all %>%
-  group_by(spec_col, behaviour) %>%
-  summarise(
-    median = median(h2),
-    lower = quantile(h2, 0.025),
-    upper = quantile(h2, 0.975)) %>%
-  mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
-  mutate("Estimated h2" = paste0(median, " [", lower, ", ", upper, "]")) %>%
-  select(c(spec_col, behaviour, 'Estimated h2')) %>%
-  arrange(spec_col, behaviour) %>%
-  separate(spec_col, into = c("Species", "Colony"), sep = " ", extra = "merge") %>%
-  rename(Behaviour = behaviour)
- 
-heritability_table$Behaviour <- factor(
-  heritability_table$Behaviour,
-  levels = rev(levels(heritability_table$Behaviour)))
-
-heritability_table %<>% arrange(Species, Colony, Behaviour)
-
-kable(heritability_table, format = "html") %>% 
-  collapse_rows(columns = c(1, 2)) %>%
-  kable_classic(font_size = 12)
-
-
-```
