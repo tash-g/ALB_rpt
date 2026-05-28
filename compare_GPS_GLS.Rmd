@@ -1,0 +1,442 @@
+---
+title: "Comparing GPS & GLS behaviour extraction"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
+
+# Functions for GPS processing and plotting
+source("RPT_functions.R")
+
+# Define & load the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "tidyr", "lubridate") 
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+# Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+
+# Make sure using dplyr select
+select <- dplyr::select
+
+```
+
+
+```{r process_gps}
+
+spec_col = c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+
+gps_trips_all <- vector("list", length(spec_col))
+
+for(j in 1:length(spec_col)) {
+
+  message("Processing: ", spec_col[j])
+  
+  load(paste0("Data_inputs/", spec_col[j], "_gps_labelled.RData"))
+  
+  ## Remove trips with unrealistic speed
+  gps_labelled.df %<>% filter(calc_speed < 26)
+  
+  ## Deal with duplicates
+  gps_labelled.df %<>%
+    group_by(ID) %>%
+    mutate(datetime = lubridate::round_date(datetime, "10 minutes")) %>%
+    distinct() %>%
+    arrange(datetime)
+  
+  ## Label landings & transit
+  gps_labelled.df %<>%
+    mutate(
+      behav_state = ifelse(calc_speed < 2.7, "rest", "aloft"),
+      prev_state = lag(behav_state),
+      landing = ifelse(
+        behav_state == "aloft" & prev_state == "rest",
+        "take-off",
+        ifelse(behav_state == "rest" &
+                 prev_state == "aloft",
+               "landing", "none")  ),
+      landing = ifelse(is.na(landing), "none", landing),
+      behav_state = ifelse(calc_speed > 8.3, "transit", behav_state)  )
+  
+  ## Calculate distance to next point
+  gps_labelled.df %<>%
+    group_by(ring, boutID) %>%
+    mutate(dist_next = gcd.hf(longitude, latitude, lead(longitude), lead(latitude))) %>%
+    ungroup()
+    
+  ## Summarise parameters
+  gps_full <- gps_labelled.df %>%
+    group_by(ring, season, boutID) %>%
+    mutate(
+      start_date = min(datetime),
+      end_date = max(datetime),
+      duration.hours = as.numeric(difftime(end_date, start_date, units = "hours") + 0.17),
+      duration.days = duration.hours / 24,
+      n_landings = sum(landing != "none"),
+      transit_time.hrs = (sum(behav_state == "transit") * 10) / 60,
+      rest_time.hrs = (sum(behav_state == "rest") * 10) / 60,
+      transit_time.pct = (transit_time.hrs / duration.hours) * 100,
+      rest_time.pct = (rest_time.hrs / duration.hours) * 100) %>%
+    select(-c(start_date, end_date))
+      
+  
+  # Summarise trips ----  
+  all_birds <- unique(gps_full$ringYr)
+  all_trips.list <- vector(mode = "list", length = length(all_birds))
+    
+  for (i in 1:length(all_birds)) {
+      
+    print(paste0("Processing bird ", i, " of ", length(all_birds)))
+      
+    gps_i <- subset(gps_full, ringYr == all_birds[i]) %>%
+      mutate(immersion = NA, dur.mins = NA, 
+             dryWet = ifelse(behav_state == "rest", "wet", "dry")) %>%
+      ungroup() %>%
+      select(c(ring, season, longitude, latitude, datetime, ringYr, phase, loc, 
+                 n_landings, behav_state, immersion, dryWet)) 
+      
+    # Round to nearest minute and where duplicates, retain GPS
+    gps_i %<>% mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
+      mutate(datetime = lubridate::round_date(datetime, "10 minutes")) %>%
+      distinct() %>%
+      arrange(datetime) 
+      
+    gps_i$tripID = rep(1:length(rle(gps_i$loc)$values), rle(gps_i$loc)$lengths)
+      
+    gps_i %<>%
+      group_by(ring, season, tripID) %>%
+      mutate(
+        start = datetime[1],
+        end = datetime[n()],
+        duration.mins = as.numeric(difftime(end, start, unit = "mins")) ) %>%
+      arrange(start) %>%
+      filter(!is.na(datetime) & !is.na(end))
+      
+      ## Get rid of very short trips/col visits ----
+      if (all(gps_i$duration.mins < 480)) next
+      
+      max_tries <- 5
+      tries <- 0
+      
+      while(any(gps_i$duration.mins <= 480) & tries <= max_tries) {
+        
+        tries = tries + 1
+        
+        gps_i$loc <- ifelse(gps_i$duration.mins <= 480, 
+                               ifelse(gps_i$loc == "trip", "col", "trip"),
+                               gps_i$loc)
+        gps_i$tripID <- rep(1:length(rle(gps_i$loc)$values), rle(gps_i$loc)$length)
+        
+        gps_i %<>%
+          group_by(ring, season, tripID) %>%
+          mutate(start = datetime[1],
+                 end = datetime[n()],
+                 duration.mins = as.numeric(difftime(end, start, unit = "mins"))) %>%
+          arrange(start)
+        
+      }
+      
+      # Summarise behaviours ----
+      trips_i <- gps_i %>%
+        group_by(tripID) %>%
+        filter(loc == "trip") %>%
+        mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S"),
+               prev_state = lag(dryWet),
+               bout_time = as.numeric(difftime(datetime, lag(datetime), units = "mins"))) %>%
+        dplyr::summarise(source = "GPS",
+                         ring = ring[1],
+                         season = season[1],
+                         phase = phase[1],
+                         start_date = datetime[1],
+                         end_date = max(datetime, na.rm = T),
+                         loc = loc[1],
+                         # Duration
+                         duration.hrs = as.numeric(difftime(end_date, start_date, units = "hours") + 0.17),
+                         duration.days = duration.hrs / 24,
+                         duration.hrs.var = var(duration.hrs),
+                         # Transitions
+                         transitions = sum(dryWet != prev_state, na.rm = TRUE),  # Count state transitions
+                         transitions.var = var(transitions),
+                         landing = sum(dryWet == "dry" & prev_state == "wet", na.rm = TRUE),
+                         takeoff = sum(dryWet == "wet" & prev_state == "dry", na.rm = TRUE),
+                         # Behaviours
+                         transit_time.hrs = sum(bout_time[behav_state == "transit"], na.rm = T) / 60,
+                         rest_time.hrs = sum(bout_time[behav_state == "rest"], na.rm = T) / 60,
+                         transit_time.pct = transit_time.hrs/duration.hrs * 100,
+                         rest_time.pct = rest_time.hrs/duration.hrs * 100,
+                         transit_to_rest.ratio = transit_time.hrs/rest_time.hrs) %>%
+        ungroup() %>%
+        filter(duration.hrs > 0) %>%
+        filter(!(transit_time.pct > 100 | rest_time.pct > 100)) %>%
+        select(-tripID)
+      
+      all_trips.list[[i]] <- trips_i
+      
+  }
+  
+  gps_trips_all[[j]] <- do.call("rbind", all_trips.list)
+  gps_trips_all[[j]]$spec_col <- spec_col[j]
+
+}
+
+gps_trips <- do.call("rbind", gps_trips_all)
+save(gps_trips, file = "Data_outputs/gps_trip_comparison.RData")
+```
+
+```{r process_gls}
+
+spec_col = c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+
+gls_trips_all <- vector("list", length(spec_col))
+
+for (j in seq_along(spec_col)) {
+
+  message("Processing: ", spec_col[j])
+
+  load(paste0("Data_inputs/", spec_col[j], "_gls_labelled.RData"))
+
+  gls_labelled.df %<>%
+        mutate(ringYr = paste0(ring, "_", season),
+               n_landings = NA, 
+               behav_state = ifelse(immersion <= 3, "transit", 
+                                    ifelse(immersion >= 197, "rest", "aloft")),
+               datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
+        select(c(ring, season, datetime, ringYr, loc, n_landings, behav_state,
+                 immersion, dryWet)) %>%
+        relocate(ring, season, datetime, ringYr, loc, n_landings, 
+                 behav_state, immersion, dryWet)
+  
+  all_birds <- unique(gls_labelled.df$ringYr)
+  all_trips.list <- vector(mode = "list", length = length(all_birds))
+  
+  for (i in 1:length(all_birds)) {
+      
+      print(paste0("Processing bird ", i, " of ", length(all_birds)))
+      
+      gls_i <- subset(gls_labelled.df, ringYr == all_birds[i])
+      
+      ## Clear duplicates
+      gls_i %<>% 
+          mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
+          mutate(datetime = lubridate::round_date(datetime, "10 minutes")) %>%
+          arrange(datetime)
+       
+      gls_i$tripID = rep(1:length(rle(gls_i$loc)$values), rle(gls_i$loc)$lengths)
+      
+      gls_i %<>% 
+        group_by(ring, season, tripID) %>%
+        mutate(start = datetime[1],
+               end = datetime[n()],
+               duration.mins = as.numeric(difftime(end, start, unit = "mins"))) %>%
+        arrange(start) %>%
+        filter(!is.na(datetime) & !is.na(end))
+      
+      ## Get rid of very short trips/col visits
+      if (all(gls_i$duration.mins < 480)) next
+      
+      max_tries <- 5
+      tries <- 0
+      
+      while(any(gls_i$duration.mins <= 480) & tries <= max_tries) {
+        
+        tries = tries + 1
+        
+        gls_i$loc <- ifelse(gls_i$duration.mins <= 480, 
+                               ifelse(gls_i$loc == "trip", "col", "trip"),
+                               gls_i$loc)
+        gls_i$tripID <- rep(1:length(rle(gls_i$loc)$values), rle(gls_i$loc)$length)
+        
+        gls_i %<>%
+          group_by(ring, season, tripID) %>%
+          mutate(start = datetime[1],
+                 end = datetime[n()],
+                 duration.mins = as.numeric(difftime(end, start, unit = "mins"))) %>%
+          arrange(start)
+        
+      }
+      
+      ## Summarise behaviours ----
+      trips_i <- gls_i %>%
+        group_by(tripID) %>%
+        filter(loc == "trip") %>%
+        mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S"),
+               prev_state = lag(dryWet),
+               bout_time = as.numeric(difftime(datetime, lag(datetime), units = "mins"))) %>%
+        dplyr::summarise(source = "GLS",
+                         ring = ring[1],
+                         season = season[1],
+                         start_date = datetime[1],
+                         end_date = max(datetime, na.rm = T),
+                         loc = loc[1],
+                         # Duration
+                         duration.hrs = as.numeric(difftime(end_date, start_date, units = "hours") + 0.17),
+                         duration.days = duration.hrs / 24,
+                         duration.hrs.var = var(duration.hrs),
+                         # Transitions
+                         transitions = sum(dryWet != prev_state, na.rm = TRUE),  # Count state transitions
+                         transitions.var = var(transitions),
+                         landing = sum(dryWet == "dry" & prev_state == "wet", na.rm = TRUE),
+                         takeoff = sum(dryWet == "wet" & prev_state == "dry", na.rm = TRUE),
+                         # Behaviours
+                         transit_time.hrs = sum(bout_time[behav_state == "transit"], na.rm = T) / 60,
+                         rest_time.hrs = sum(bout_time[behav_state == "rest"], na.rm = T) / 60,
+                         transit_time.pct = transit_time.hrs/duration.hrs * 100,
+                         rest_time.pct = rest_time.hrs/duration.hrs * 100,
+                         transit_to_rest.ratio = transit_time.hrs/rest_time.hrs) %>%
+        ungroup() %>%
+        filter(duration.hrs > 0) %>%
+        filter(!(transit_time.pct > 100 | rest_time.pct > 100)) %>%
+        select(-tripID)
+      
+      all_trips.list[[i]] <- trips_i
+  }
+  
+  gls_trips_all[[j]] <- do.call("rbind", all_trips.list)
+
+  gls_trips_all[[j]]$dataset <- spec_col[j]
+}
+
+gls_trips <- do.call("rbind", gls_trips_all)
+save(gls_trips, file = "Data_outputs/gls_trip_comparison.RData")
+  
+```
+
+
+```{r merge_data_streams}
+
+# Set matching tolerance
+tol = 1
+
+gps_trips %<>% mutate(start_date_gps = as.Date(start_date),
+                      end_date_gps = as.Date(end_date))
+
+gls_trips %<>% mutate(start_date_gls = as.Date(start_date),
+                      end_date_gls = as.Date(end_date))
+
+gps_gls <- gps_trips %>%
+  inner_join(gls_trips, by = c("ring", "season")) %>%
+  filter(start_date_gps <= end_date_gls + tol,
+    end_date_gps   >= start_date_gls - tol)
+
+
+gps_gls_best <- gps_gls %>%
+  mutate(
+    start_diff = abs(as.numeric(difftime(start_date_gls, start_date_gps, "days"))),
+    end_diff   = abs(as.numeric(difftime(end_date_gls, end_date_gps, "days"))),
+    score = start_diff + end_diff
+  ) %>%
+  group_by(gls_id = paste(ring, start_date_gls, end_date_gls)) %>%
+  slice_min(score, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+comparison <- gps_gls_best %>%
+  transmute(
+    ring,
+    season,
+
+    # GPS trip identity
+    gps_start = start_date_gps,
+    gps_end   = end_date_gps,
+    gps_duration = duration.hrs.x,
+    gps_transit_pct = transit_time.pct.x,
+    gps_rest_pct    = rest_time.pct.x,
+    gps_landing = landing.x,
+
+    # GLS trip identity
+    gls_start = start_date_gls,
+    gls_end   = end_date_gls,
+    gls_duration = duration.hrs.y,
+    gls_transit_pct = transit_time.pct.y,
+    gls_rest_pct = rest_time.pct.y,
+    gls_landing = landing.y
+  )
+
+# Calc agreement
+agreement_long <- tibble::tibble(
+
+  metric = c("duration", "landing", "transit_pct", "rest_pct"),
+
+  bias = c(
+    mean(comparison$gls_duration - comparison$gps_duration, na.rm = TRUE),
+    mean(comparison$gls_landing - comparison$gps_landing, na.rm = TRUE),
+    mean(comparison$gls_transit_pct - comparison$gps_transit_pct, na.rm = TRUE),
+    mean(comparison$gls_rest_pct - comparison$gps_rest_pct, na.rm = TRUE)
+  ),
+
+  MAE = c(
+    mean(abs(comparison$gls_duration - comparison$gps_duration), na.rm = TRUE),
+    mean(abs(comparison$gls_landing - comparison$gps_landing), na.rm = TRUE),
+    mean(abs(comparison$gls_transit_pct - comparison$gps_transit_pct), na.rm = TRUE),
+    mean(abs(comparison$gls_rest_pct - comparison$gps_rest_pct), na.rm = TRUE)
+  ),
+
+  RMSE = c(
+    sqrt(mean((comparison$gls_duration - comparison$gps_duration)^2, na.rm = TRUE)),
+    sqrt(mean((comparison$gls_landing - comparison$gps_landing)^2, na.rm = TRUE)),
+    sqrt(mean((comparison$gls_transit_pct - comparison$gps_transit_pct)^2, na.rm = TRUE)),
+    sqrt(mean((comparison$gls_rest_pct - comparison$gps_rest_pct)^2, na.rm = TRUE))
+  ),
+
+  correlation = c(
+    cor(comparison$gls_duration, comparison$gps_duration, use = "complete.obs"),
+    cor(comparison$gls_landing, comparison$gps_landing, use = "complete.obs"),
+    cor(comparison$gls_transit_pct, comparison$gps_transit_pct, use = "complete.obs"),
+    cor(comparison$gls_rest_pct, comparison$gps_rest_pct, use = "complete.obs")
+  ),
+
+  pct_within_10 = c(
+    mean(abs(comparison$gls_duration - comparison$gps_duration) /
+           comparison$gps_duration < 0.20, na.rm = TRUE),
+
+    mean(abs(comparison$gls_landing - comparison$gps_landing) /
+           ifelse(comparison$gps_landing == 0, NA, comparison$gps_landing) < 0.20, na.rm = TRUE),
+
+    mean(abs(comparison$gls_transit_pct - comparison$gps_transit_pct) /
+           comparison$gps_transit_pct < 0.20, na.rm = TRUE),
+
+    mean(abs(comparison$gls_rest_pct - comparison$gps_rest_pct) /
+           comparison$gps_rest_pct < 0.20, na.rm = TRUE)
+  )
+)
+
+# Plots
+comp_duration.plot <-
+  ggplot(data = comparison, aes(x = gps_duration, y = gls_duration)) +
+  geom_abline() +
+  geom_point() +
+  theme_bw()
+
+comp_transit_pct.plot <-
+  ggplot(data = comparison, aes(x = gps_transit_pct, y = gls_transit_pct)) +
+  geom_abline() +
+  geom_point() +
+  theme_bw()
+
+comp_rest_pct.plot <-
+  ggplot(data = comparison, aes(x = gps_rest_pct, y = gls_rest_pct)) +
+  geom_abline() +
+  geom_point() +
+  theme_bw()
+
+comp_landing.plot <-
+  ggplot(data = comparison, aes(x = gps_landing, y = gls_landing)) +
+  geom_abline() +
+  geom_point() +
+  theme_bw()
+
+ggarrange(comp_duration.plot, 
+          comp_transit_pct.plot,
+          comp_rest_pct.plot,
+          comp_landing.plot, 
+          ncol = 2, nrow = 2)
+
+```

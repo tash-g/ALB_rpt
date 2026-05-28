@@ -28,6 +28,7 @@ A short description of each script is given below. Briefly, the workflow is as f
 ### Functions
 
 -   **RPT_functions.R**: Contains custom functions used throughout the workflow for data processing, behavioural extraction, habitat sampling, and repeatability analyses. This script is sourced by other R and RMarkdown scripts as needed.
+-   **condR.R**: Function for calculating conditional repeatability, taken from Schielzeth, H. & Nakagawa, S. (2022). Methods in Ecology and Evolution, 13, 1214–1223. https://doi.org/10.1111/2041-210X.13856
 
 ### Data processing
 
@@ -179,7 +180,7 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *id*: Unique identifier for each individual bird;
     -   *dam*: Mother’s unique ID;
     -   *sire*: Father’s unique ID;
-    -   *Year*: Year of hatching;
+    -   *Year*: Year of hatching.
 
 -   `{species}_{colony}_sst-bathy-chla_data_population_level.RData`: GPS points with environmental variables appended. Each row corresponds to a used or available location with matched environmental data.
 

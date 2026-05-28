@@ -8,6 +8,24 @@ output:
     toc_depth: 4
 ---
 
+# Session info
+
+**R version 4.3.1 (2023-06-16 ucrt)**
+
+**Platform:** x86_64-w64-mingw32/x64 (64-bit) 
+
+**locale:**
+_LC_COLLATE=English_United Kingdom.utf8_, _LC_CTYPE=English_United Kingdom.utf8_, _LC_MONETARY=English_United Kingdom.utf8_, _LC_NUMERIC=C_ and _LC_TIME=English_United Kingdom.utf8_
+
+**attached base packages:** 
+_stats_, _graphics_, _grDevices_, _utils_, _datasets_, _methods_ and _base_
+
+**other attached packages:** 
+_circular(v.0.5-1)_, _nadiv(v.2.18.0)_, _betareg(v.3.2-0)_, _adehabitatHR(v.0.4.22)_, _adehabitatLT(v.0.3.28)_, _CircStats(v.0.2-7)_, _boot(v.1.3-28.1)_, _adehabitatMA(v.0.3.17)_, _ade4(v.1.7-24)_, _data.table(v.1.18.2.1)_, _emmeans(v.2.0.3)_, _sp(v.2.2-1)_, _geosphere(v.1.5-20)_, _purrr(v.1.2.1)_, _rnaturalearth(v.1.2.0)_, _sf(v.1.0-20)_, _ggpubr(v.0.6.3)_, _MasterBayes(v.2.59)_, _kinship2(v.1.9.6.2)_, _quadprog(v.1.5-8)_, _genetics(v.1.3.8.1.3)_, _mvtnorm(v.1.3-3)_, _MASS(v.7.3-60)_, _gtools(v.3.9.5)_, _gdata(v.3.0.1)_, _combinat(v.0.0-8)_, _igraph(v.2.1.4)_, _MCMCglmm(v.2.36)_, _ape(v.5.8-1)_, _coda(v.0.19-4.1)_, _brms(v.2.23.0)_, _Rcpp(v.1.1.1)_, _ggridges(v.0.5.7)_, _glmmTMB(v.1.1.11)_, _stringr(v.1.6.0)_, _kableExtra(v.1.4.0)_, _tidyr(v.1.3.2)_, _gridExtra(v.2.3)_, _lme4(v.2.0-1)_, _Matrix(v.1.5-4.1)_, _ggplot2(v.4.0.2)_, _magrittr(v.2.0.3)_ and _dplyr(v.1.2.0)_
+
+**loaded via a namespace (and not attached):** 
+_RColorBrewer(v.1.1-3)_, _tensorA(v.0.36.2.1)_, _rstudioapi(v.0.18.0)_, _modeltools(v.0.2-24)_, _estimability(v.1.5.1)_, _farver(v.2.1.2)_, _nloptr(v.2.2.1)_, _rmarkdown(v.2.31)_, _vctrs(v.0.7.2)_, _minqa(v.1.2.8)_, _rstatix(v.0.7.3)_, _htmltools(v.0.5.9)_, _forcats(v.1.0.1)_, _distributional(v.0.7.0)_, _broom(v.1.0.12)_, _Formula(v.1.2-5)_, _StanHeaders(v.2.32.10)_, _KernSmooth(v.2.23-21)_, _sandwich(v.3.1-1)_, _plyr(v.1.8.9)_, _zoo(v.1.8-13)_, _lubridate(v.1.9.4)_, _TMB(v.1.9.21)_, _lifecycle(v.1.0.5)_, _pkgconfig(v.2.0.3)_, _R6(v.2.6.1)_, _fastmap(v.1.2.0)_, _rbibutils(v.2.3)_, _digest(v.0.6.39)_, _numDeriv(v.2016.8-1.1)_, _colorspace(v.2.1-1)_, _textshaping(v.1.0.5)_, _labeling(v.0.4.3)_, _timechange(v.0.4.0)_, _abind(v.1.4-8)_, _mgcv(v.1.8-42)_, _compiler(v.4.3.1)_, _proxy(v.0.4-27)_, _pander(v.0.6.6)_, _withr(v.3.0.2)_, _S7(v.0.2.1)_, _backports(v.1.5.0)_, _inline(v.0.3.21)_, _carData(v.3.0-6)_, _DBI(v.1.3.0)_, _QuickJSR(v.1.9.0)_, _pkgbuild(v.1.4.8)_, _ggsignif(v.0.6.4)_, _classInt(v.0.4-11)_, _corpcor(v.1.6.10)_, _loo(v.2.9.0)_, _tools(v.4.3.1)_, _units(v.0.8-7)_, _lmtest(v.0.9-40)_, _otel(v.0.2.0)_, _nnet(v.7.3-19)_, _glue(v.1.8.0)_, _callr(v.3.7.6)_, _nlme(v.3.1-162)_, _grid(v.4.3.1)_, _checkmate(v.2.3.4)_, _reshape2(v.1.4.5)_, _generics(v.0.1.4)_, _gtable(v.0.3.6)_, _class(v.7.3-22)_, _flexmix(v.2.3-20)_, _xml2(v.1.5.2)_, _car(v.3.1-5)_, _utf8(v.1.2.6)_, _pillar(v.1.11.1)_, _posterior(v.1.7.0)_, _splines(v.4.3.1)_, _lattice(v.0.21-8)_, _tidyselect(v.1.2.1)_, _knitr(v.1.51)_, _reformulas(v.0.4.4)_, _svglite(v.2.2.2)_, _stats4(v.4.3.1)_, _xfun(v.0.57)_, _bridgesampling(v.1.2-1)_, _matrixStats(v.1.5.0)_, _rstan(v.2.32.7)_, _stringi(v.1.8.7)_, _yaml(v.2.3.12)_, _evaluate(v.1.0.5)_, _codetools(v.0.2-19)_, _tibble(v.3.3.1)_, _cli(v.3.6.5)_, _RcppParallel(v.5.1.11-2)_, _xtable(v.1.8-8)_, _systemfonts(v.1.3.2)_, _Rdpack(v.2.6.3)_, _processx(v.3.8.7)_, _parallel(v.4.3.1)_, _rstantools(v.2.6.0)_, _ggh4x(v.0.3.1)_, _cubature(v.2.1.4-1)_, _bayesplot(v.1.15.0)_, _Brobdingnag(v.1.2-9)_, _viridisLite(v.0.4.3)_, _scales(v.1.4.0)_, _e1071(v.1.7-16)_ and _rlang(v.1.1.7)_
+
 ## Set-up
 
 ```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
@@ -18,7 +36,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 source("RPT_functions.R")
 
 # Define the packages
-packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ecmwfr", "ggridges", "rnaturalearth", "purrr", "geosphere", "sp", "kableExtra", "emmeans", "data.table", "adehabitatHR", "betareg", "MasterBayes", "pheatmap", "nadiv", "brms", "circular") 
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ggridges", "rnaturalearth", "purrr", "geosphere", "sp", "kableExtra", "emmeans", "data.table", "adehabitatHR", "betareg", "MasterBayes", "nadiv", "brms", "circular") 
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -95,7 +113,7 @@ for (i in 1:length(spec_col)) {
   my_gps %<>% group_by(tripID) %>% mutate(n_locs = n()) %>% filter(n_locs > 6) %>% select(-n_locs) %>% ungroup()
   
   ## Remove birds with only one trip
-  my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
+  # my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
   
   # Calculate average bearing from colony ------------
    
@@ -177,7 +195,7 @@ ggplot(bearings.df, aes(x = bearing_360)) +
 
 ### Estimate repeatability
 
-```{r rpt_bearing_differences}
+```{r rpt_bearings}
 
 load("Data_outputs/bearings_data.RData")
 
@@ -465,7 +483,7 @@ for (i in 1:length(spec_col)) {
     filter(n_locs > 20 & max_dist > 65) %>% select(-c(n_locs, max_dist)) %>% ungroup()
   
   ## Remove birds with only one trip
-  my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
+  # my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
   
   ## Correct issues with breeding phase
   trips_to_fix <- my_gps %>%
@@ -929,149 +947,6 @@ knitr::kable(ba_summary, format = "html",
   row_spec(which(ba_summary$`p value` < 0.05 & ba_summary$Term != "Intercept"), bold = TRUE) %>%
   collapse_rows(columns = c(1, 2)) %>%
   kable_styling(font_size = 9)
-
-
-```
-
-
-## Appendix
-
-### Sample sizes for colony & species
-
-```{r sample_sizes}
-### Sample sizes
-
-load("Data_outputs/all_gps_data.RData")
-
-trips.table <- all_gps.df %>% group_by(species, colony, ring, season) %>% summarise(n_trips = n_distinct(boutID)) %>%
-  filter(n_trips > 1) %>% group_by(species, colony,season) %>% summarise(n_birds = n_distinct(ring)) %>% 
-  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
-         colony = ifelse(colony == "kerguelen", "Kerguelen",
-                          ifelse(colony == "crozet", "Crozet", "Bird Island"))) %>%
-  relocate(species, .before = colony) %>%
-  rename(Species = species, Colony = colony, Season = season, `N birds` = n_birds)
-
-trips_wide <- trips.table %>%
-  arrange(Season, Species, Colony) %>%
-  pivot_wider(names_from = Season, values_from = `N birds`, values_fill = 0)
-
-kable(trips_wide, format = "html", 
-             caption = 'Table 1. Sample sizes for each species, colony, and year, showing the number of individuals for which we have more than 1 foraging trip.') %>%
-  collapse_rows(columns = c(1)) %>%
-  row_spec(2, extra_css = "border-bottom: 1px solid;") %>%
-  kable_classic(font_size = 9)
-
-
-# How many birds have > 1 year of data?
-
-seasons_table <- all_gps.df %>%
-  group_by(colony, species, ring) %>%
-  summarise(n_seasons = n_distinct(season)) %>%
-  filter(n_seasons > 1) %>%
-  group_by(colony, species) %>%
-  summarise(n_birds = n_distinct(ring)) %>%
-  relocate(species, colony, n_birds) %>%
-  mutate(species = ifelse(species == "bba", "BBAL", "WAAL"),
-         colony = case_when(
-           colony == "birdis" ~ "Bird Island",
-           colony == "crozet" ~ "Crozet",
-           colony == "kerguelen" ~ "Kerguelen" )) %>%
-  rename(Species = species, Colony = colony, Individuals = n_birds) %>%
-  arrange(Species)
-
-kable(seasons_table, format = "html", 
-             caption = 'Table 2. Number of birds for each colony and species where trips are recorded in > 1 season.') %>%
-  collapse_rows(columns = c(1, 2)) %>%
-  kable_classic(font_size = 12)
-
-```
-
-### Plot bearings with tracks
-
-```{r plot_tracks_with_bearings}
-
-# Set colony coordinates
-ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
-bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
-cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
-
-load("Data_outputs/all_gps_with_bearings.RData")
-
-all_rings <- unique(gps_with_bearings$ring)
-
-for (i in 1:length(all_rings)) {
-  
-  my_df <- gps_with_bearings %>% filter(ring == all_rings[[i]])
-  my_df$tripID <- paste0(my_df$species[1], "_", my_df$colony[1], "_", my_df$tripID)
-  
-  # Get colony coords
-  if (grepl("ker", my_df$colony[1])) {
-    col_coords <- ker_coords
-  } else if (grepl("birdis", my_df$colony[1])) {
-    col_coords <- bi_coords
-  } else if (grepl("cro", my_df$colony[1])) {
-    col_coords <- cro_coords }
-  
-  # Make the bearing dataframe
-  bearing_df <- my_df %>%
-      group_by(tripID) %>%
-      summarise(
-        cx = first(longitude),
-        cy = first(latitude),
-        bearing_avg= as.numeric(first(bearing_avg)),
-        bearing_initial = as.numeric(first(bearing_initial)),
-        bearing_distal  = as.numeric(first(bearing_distal)),
-        lon_range = max(longitude) - min(longitude),
-        lat_range = max(latitude) - min(latitude),
-        .groups = "drop" ) %>%
-      pivot_longer(
-        cols = starts_with("bearing_"),
-        names_to = "bearing_type",
-        values_to = "bearing") %>%
-      mutate(
-        # scale factor = how long you want the arrow to be
-        bearing360 = (bearing + 360) %% 360,
-        scale_factor = 0.5 * pmax(lon_range, lat_range),
-        dx = scale_factor * sin(bearing360 * pi/180),  # x = sin
-        dy = scale_factor * cos(bearing360 * pi/180),  # y = cos
-        xend = cx + dx,
-        yend = cy + dy,
-        bearing_type = recode(
-            bearing_type,
-            "bearing_avg"     = "Average bearing",
-            "bearing_initial" = "Initial bearing",
-            "bearing_distal"  = "Distal bearing" ))
- 
-  gps_plot <- ggplot(aes(x = longitude, y = latitude), data = my_df) +
-    geom_path(col = "grey50") +
-    geom_segment(
-      data = bearing_df,
-      aes(x = cx, y = cy, xend = xend, yend = yend, col = bearing_type),
-      arrow = arrow(length = unit(0.3, "cm")),
-      inherit.aes = FALSE ) +
-    scale_colour_viridis_d(name = "") +
-    facet_wrap(~tripID, scales = "free", nrow = 1) +
-    theme_bw() +
-    theme(axis.title.x = element_blank(),
-          axis.title.y = element_blank(),
-          legend.position = "bottom",
-          legend.direction = "horizontal")
-  
-  # Output plot
-  n_facets <- n_distinct(my_df$tripID)
-  width_per_facet  <- 400   
-  height_per_facet <- 400   
-  
-  png_width  <- n_facets * width_per_facet
-  png_height <- height_per_facet
-  
-  png(file = paste0("Figures/Workshop/", my_df$species[1], "_", my_df$colony[1], "_", my_df$ring[1], ".png"),
-      width = png_width, height = png_height, res = 100)
-  print(gps_plot)
-  dev.off()
- 
-  
-}
 
 
 ```

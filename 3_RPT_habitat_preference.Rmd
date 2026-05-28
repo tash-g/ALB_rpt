@@ -11,10 +11,63 @@ editor_options:
     wrap: 72
 ---
 
+# Session info
+
+**R version 4.5.0 (2025-04-11 ucrt)**
+
+**Platform:** x86_64-w64-mingw32/x64
+
+**locale:** *LC_COLLATE=English_United Kingdom.utf8*,
+*LC_CTYPE=English_United Kingdom.utf8*, *LC_MONETARY=English_United
+Kingdom.utf8*, *LC_NUMERIC=C* and *LC_TIME=English_United Kingdom.utf8*
+
+**attached base packages:** *stats*, *graphics*, *grDevices*, *utils*,
+*datasets*, *methods* and *base*
+
+**other attached packages:** *pander(v.0.6.6)*, *nadiv(v.2.18.0)*,
+*pheatmap(v.1.0.13)*, *MasterBayes(v.2.58)*, *kinship2(v.1.9.6.2)*,
+*quadprog(v.1.5-8)*, *genetics(v.1.3.8.1.3)*, *mvtnorm(v.1.3-3)*,
+*gtools(v.3.9.5)*, *gdata(v.3.0.1)*, *combinat(v.0.0-8)*,
+*igraph(v.2.2.1)*, *MCMCglmm(v.2.36)*, *ape(v.5.8-1)*,
+*coda(v.0.19-4.1)*, *MASS(v.7.3-65)*, *brms(v.2.23.0)*,
+*Rcpp(v.1.0.14)*, *glmmTMB(v.1.1.14)*, *ggeffects(v.2.3.2)*,
+*pROC(v.1.19.0.1)*, *corrplot(v.0.95)*, *ggridges(v.0.5.7)*,
+*kableExtra(v.1.4.0)*, *ggpubr(v.0.6.2)*, *data.table(v.1.18.2.1)*,
+*DHARMa(v.0.4.7)*, *lubridate(v.1.9.4)*, *tidyr(v.1.3.1)*,
+*lme4(v.1.1-38)*, *Matrix(v.1.7-3)*, *ggplot2(v.4.0.1)*,
+*magrittr(v.2.0.3)* and *dplyr(v.1.1.4)*
+
+**loaded via a namespace (and not attached):** *Rdpack(v.2.6.5)*,
+*sandwich(v.3.1-1)*, *rlang(v.1.1.7)*, *otel(v.0.2.0)*,
+*matrixStats(v.1.5.0)*, *compiler(v.4.5.0)*, *mgcv(v.1.9-4)*,
+*loo(v.2.9.0)*, *systemfonts(v.1.3.1)*, *vctrs(v.0.6.5)*,
+*stringr(v.1.6.0)*, *pkgconfig(v.2.0.3)*, *fastmap(v.1.2.0)*,
+*backports(v.1.5.0)*, *rmarkdown(v.2.30)*, *nloptr(v.2.2.1)*,
+*purrr(v.1.0.4)*, *xfun(v.0.52)*, *broom(v.1.0.12)*,
+*parallel(v.4.5.0)*, *R6(v.2.6.1)*, *stringi(v.1.8.7)*,
+*RColorBrewer(v.1.1-3)*, *car(v.3.1-3)*, *boot(v.1.3-31)*,
+*numDeriv(v.2016.8-1.1)*, *estimability(v.1.5.1)*, *knitr(v.1.51)*,
+*zoo(v.1.8-15)*, *bayesplot(v.1.15.0)*, *splines(v.4.5.0)*,
+*timechange(v.0.3.0)*, *tidyselect(v.1.2.1)*, *rstudioapi(v.0.18.0)*,
+*abind(v.1.4-8)*, *yaml(v.2.3.12)*, *TMB(v.1.9.20)*,
+*lattice(v.0.22-6)*, *tibble(v.3.3.0)*, *withr(v.3.0.2)*,
+*bridgesampling(v.1.2-1)*, *S7(v.0.2.0)*, *posterior(v.1.6.1)*,
+*evaluate(v.1.0.5)*, *RcppParallel(v.5.1.10)*, *xml2(v.1.5.2)*,
+*pillar(v.1.11.1)*, *carData(v.3.0-6)*, *tensorA(v.0.36.2.1)*,
+*checkmate(v.2.3.2)*, *reformulas(v.0.4.4)*, *insight(v.1.4.5)*,
+*distributional(v.0.6.0)*, *generics(v.0.1.4)*, *rstantools(v.2.6.0)*,
+*scales(v.1.4.0)*, *minqa(v.1.2.8)*, *xtable(v.1.8-4)*, *glue(v.1.8.0)*,
+*cubature(v.2.1.4-1)*, *emmeans(v.2.0.1)*, *tools(v.4.5.0)*,
+*ggsignif(v.0.6.4)*, *grid(v.4.5.0)*, *rbibutils(v.2.4.1)*,
+*nlme(v.3.1-168)*, *Formula(v.1.2-5)*, *cli(v.3.6.5)*,
+*textshaping(v.1.0.4)*, *viridisLite(v.0.4.2)*, *svglite(v.2.2.2)*,
+*Brobdingnag(v.1.2-9)*, *corpcor(v.1.6.10)*, *gtable(v.0.3.6)*,
+*rstatix(v.0.7.3)*, *digest(v.0.6.39)*, *farver(v.2.1.2)*,
+*htmltools(v.0.5.9)* and *lifecycle(v.1.0.5)*
 
 # Set-up
 
-```{r setup, include = FALSE}
+```{r setup_packages_functions, include = FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
 # Functions for GPS processing and plotting
@@ -46,25 +99,37 @@ select <- dplyr::select
 # Scale function
 scale_2SD <- function(variable) { (variable - mean(variable, na.rm = TRUE)) / sd(variable, na.rm = TRUE) * 2 }
 
+```
+
+```{r setup_parameters}
+
 # Set colours
-bathy_col = "#0072B2" #"#1E88E5"
-chl_col = "#009E73" #"#004D40"
-sst_col = "#F0E442" #"#D81B60"
+bathy_col = "#0072B2" 
+chl_col = "#009E73" 
+sst_col = "#F0E442" 
 
 col_between <- "#91c5f2"
 col_within <- "#0b3860"
 
 # Heritability priors
-
 priors_animal <- c(
   prior(normal(0, 1), class = "Intercept"),
-  prior(exponential(1), class = "sd", group = "ring"), 
+  prior(exponential(1), class = "sd", group = "ring_pe"), 
   prior(exponential(1), class = "sd", group = "animal"),
   prior(exponential(1), class = "sigma") )
 
+# Sim number for bootstrapping CIs 
+n_sim = 500
 
-# Sim number for bootstrapping CIs (INCREASE FOR PUBLICATION)
-my_nsim = 500
+# Environmental variable names
+env_vars.used <- c("bathy", "chlA", "SST")
+env_vars.pref = c("bathy", "chl", "sst")
+
+env_colours <- c(
+  "Bathymetry (m below sea level)" = bathy_col,
+  "Chlorophyll (mg Chl m^-3)" = chl_col,
+  "SST (°C)" = sst_col)
+
 
 ```
 
@@ -77,58 +142,8 @@ my_nsim = 500
 # Do some data cleaning
 load("Data_inputs/bbal_birdis_sst-bathy-chla_data_population_level.RData")
 
-## Remove NAs and set distance to km; remove birds with too few data points (i.e. fewer than a day's worth of data)
-pnts_all %<>% 
-  filter(!is.na(SST) & !is.na(used) & !is.na(bathy) &!is.na(chlA) & !is.na(phase)) %>%
-  mutate(dist_col.km = dist_col/1000) %>%
-  rename(ID = ring) %>%
-  select(-index) %>%
-  mutate(tripID = gsub("_", "", tripID),
-         ID_season = paste0(ID, "_", season),
-         tripID = paste(ID, season, tripID, sep = "_"))  %>%
-  group_by(ID_season) %>%
-  ungroup()
-
-## Resample to maintain used:available ratio
-pnts_all %<>%
-  group_by(tripID, date_hourly) %>%
-  group_modify(~ {
-    used_pts <- .x %>% filter(used == 1)
-    avail_pts <- .x %>% filter(used == 0)
-    # How many used?
-    n_used <- nrow(used_pts)
-    target_avail <- n_used * 6
-    # If enough available points
-    if (nrow(avail_pts) >= target_avail) {
-      avail_pts <- avail_pts %>% slice_sample(n = target_avail)
-      bind_rows(used_pts, avail_pts)
-    } else {
-      # Not enough: drop the whole group
-      tibble()
-    }
-  }) %>%
-  ungroup()
-
-## Drop individuals with insufficient data - aim for 50 points per individual
-pnts_all %<>%
-  group_by(tripID) %>%
-  mutate(n_recs = n()) %>%
-  filter(n_recs > 50) %>%
-  select(-c(n_recs)) %>%
-  ungroup()
-
-## Scale the variables 
-pnts_all %<>%
-  ungroup() %>%
-  mutate(sst_scaled = scale_2SD(SST),
-         bathy_scaled = scale_2SD(bathy),
-         chl_scaled = scale_2SD(chlA),
-         dist_col_scaled = scale_2SD(dist_col),
-         season = ifelse(as.numeric(month(date_hourly)) < 9,
-                         as.numeric(year(date_hourly)),
-                         as.numeric(year(date_hourly)) + 1 ),
-         sst_scaled2 = sst_scaled^2,
-         bathy_scaled2 = bathy_scaled^2 )
+pnts_all <- process_habitat_data(pnts_all, 6, 50) # ratio used:avail; min recs per individual
+### NEED TO TEST THIS ^ ####
 
 # used_avail_summary <- pnts_all %>%
 #   group_by(ID) %>%
@@ -153,82 +168,13 @@ save(pnts_all, file = "Data_inputs/bbal_birdis_habitat_data.RData")
 
 load("Data_inputs/bbal_birdis_habitat_data.RData")
 
-pnts.used <- pnts_all %>% filter(used == 1)
+bbal_birdis_pnts_all <- prep_used_data(pnts_all, "1 hours")
 
-## Remove birds with only one trip
-pnts.used %<>%
-  group_by(ID_season) %>%
-  mutate(n_trips = n_distinct(tripID)) %>%
-  filter(n_trips > 1) %>%
-  select(-n_trips)
+my_mod <- "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID) + (1 | ID_season) "
 
-## Thin to every 3 hours to reduce autocorrelation
-pnts.thinned <- pnts.used %>%
-  # group_by(tripID, date_hourly) %>%
-  # slice(1) %>%
-  mutate(time_3h = floor_date(date_hourly, "3 hours")) %>%
-  group_by(tripID, time_3h) %>%
-  slice(1) %>%
-  ungroup() %>%
-  arrange(tripID, date_hourly)
-
-## Set loop parameters
-env_vars <- c("bathy", "chlA", "SST")
-rpt_df <- data.frame(env_var = character(), rpt_within = numeric(), rpt_across = numeric())
-var.list <- list()
-ranef.list <- list()
-
-for (i in 1:length(env_vars)) {
-  
-  print(paste0("Processing ", env_vars[i], "..."))
-  
-  # Fit the linear mixed model
-  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID) + (1 | ID_season) ")), data = pnts.thinned)
-
-  ## Bootstrap 95% CIs
-  set.seed(123)
-  boot <- bootMer(mod, FUN = repeat_func, nsim = my_nsim, .progress = "txt")
-  rpt_CI <- apply(boot$t, 2, function(x) quantile(x, c(0.025, 0.975)))
-
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
-    mutate(env = env_vars[i])
-  
-  ranef.list[[i]] <- ring_ranefs
-  
-  # Calculate repeatability
-  var_components <- as.data.frame(VarCorr(mod))
-  var_across <- var_components[var_components$grp == "ID", "vcov"]
-  var_within <- var_components[var_components$grp == "ID_season", "vcov"] + var_across
-  var_total <- sum(var_components$vcov)
-  
-  ## Calculate repeatability
-  rpt_within <- var_within / var_total 
-  rpt_across <- var_across / var_total 
-
-  # Outputs
-  var_df <- var_components %>%
-     select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
-     mutate(across(where(is.numeric), ~ round(.x, 3)),
-            Environment = env_vars[i],
-            rpt_within = rpt_within,
-            rpt_across = rpt_across,
-            LCL_within = rpt_CI[1,1],
-            UCL_within = rpt_CI[2,1],
-            LCL_across = rpt_CI[1,2],
-            UCL_across = rpt_CI[2,2]) %>%
-     rename(Effect = grp, Variance = variance, "Std. dev" = std_dev) %>%
-     select(-name) %>%
-    relocate(Environment, .before = Effect)
-
-  var.list[[i]] <- var_df
-  
-}
-
-bbal_birdis_var_used <- do.call("rbind", var.list)
-bbal_birdis_ranefs_used <- do.call("rbind", ranef.list)
+bbal_birdis_vars <- model_habitat_use(bbal_birdis_pnts_all, env_vars.used, "BBAL", "Bird Island", n_sim, my_mod)
+bbal_birdis_var_used <- bbal_birdis_vars$variance
+bbal_birdis_ranefs_used <- bbal_birdis_vars$ranef
 
 save(bbal_birdis_var_used, file = "Data_outputs/bbal_birdis_habitat_used_variances.RData")
 save(bbal_birdis_ranefs_used, file = "Data_outputs/bbal_birdis_habitat_used_ranef.RData")
@@ -241,19 +187,14 @@ save(bbal_birdis_ranefs_used, file = "Data_outputs/bbal_birdis_habitat_used_rane
 
 load("Data_outputs/bbal_birdis_habitat_used_ranef.RData")
 
-ranefs.df %<>%
- mutate(env = case_when(
-  env == "bathy" ~ "Bathymetry (m below sea level)",
-  env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
-  env == "SST"   ~ "SST (°C)" ))
+bbal_birdis_ranefs_used %<>%
+  filter(group %in% c("ID", "ID_season")) %>%
+  mutate(env = case_when(
+    env == "bathy" ~ "Bathymetry (m below sea level)",
+    env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
+    env == "SST"   ~ "SST (°C)" )) 
 
-env_colours <- c(
-  "Bathymetry (m below sea level)" = bathy_col,
-  "Chlorophyll (mg Chl m^-3)" = chl_col,
-  "SST (°C)" = sst_col)
-
-
-split_df <- ranefs.df %>% group_by(env) %>% group_split()
+split_df <- bbal_birdis_ranefs_used  %>% group_by(env) %>% group_split()
 
 lapply(split_df, make_plot)
 plots <- lapply(split_df, make_plot)
@@ -264,8 +205,7 @@ chl_ranef.plot <- plots[[2]] +
 sst_ranef.plot <- plots[[3]] + 
   theme(axis.title.y = element_blank())
 
-bbal_birdis_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
-          ncol = 3)
+bbal_birdis_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot, ncol = 3)
 bbal_birdis_used_plot <- annotate_figure(bbal_birdis_used_plot, top = text_grob("BBAL Bird Island", face = "bold", size = 14))
 save(bbal_birdis_used_plot, file = "Data_outputs/bbal_birdis_used_plot.RData")
 
@@ -273,28 +213,6 @@ png(filename = "Figures/bbal_birdis_habitat_used_ranef_plot.png", width = 14, he
  ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
 dev.off()
-
-
-```
-
-```{r bbal_birdis_table_variance_habitat_used}
-
-load("Data_outputs/bbal_birdis_habitat_used_variances.RData")
-
-var.table <- var.df_all %>%
-  mutate(Environment = case_when(
-    Environment == "bathy" ~ "Bathymetry",
-    Environment == "chlA" ~ "Chlorphyll-a",
-    TRUE ~ "SST" )) %>%
-  mutate(across(3:6, ~ round(.x, 2))) %>%
-  rename("Within-season rpt" = rpt_within,
-         "Across season rpt" = rpt_across)
-
-kable(var.table, format = "html", 
-  caption = 'Table X. Variances and repeatability associated with random intercepts from the habitat used model.') %>%
-  row_spec(c(6,11), extra_css = "border-top: 1px dotted;") %>%
-  collapse_rows(columns = c(1, 5, 6)) %>%
-  kable_classic(font_size = 12)
 
 ```
 
@@ -394,271 +312,82 @@ rm(bbal_birdis_glmm.between_sst); gc()
 
 #### Conditional repeatability
 
+We will calculate metrics of repeatability from our preference models.
+We measure both raw variation and derive conditional repeatability
+across the environmental covariates.
+
+Raw variation includes: - *slope_var*: Among-individual variance in
+plasticity (measured as individual preference for different
+environmental levels) - *marginal_R2*: Average repeatability across the
+entire environmental range - *R2*: Proportion of total variance
+attributed to the random slopes
+
+Conditional repeatability metrics include: - *med_rpt*: Median
+repeatability. Since repeatability varies across the 90% range of
+chlorophyll, condR calculates it at many points. med_rpt is the average
+(median) repeatability across that whole environmental range
+
 ```{r bbal_birdis_cond_repeatability}
 
+# [ 1 ] Calculate conditional repeatability ----
+
 load("Data_inputs/bbal_birdis_habitat_data.RData")
-
-env_vars = c("bathy", "chl", "sst")
-
-# [ 1 ] Calculate conditional repeatability ------
-
-## Decide on simulation number
-n_sim <- 100
-
-## Approximate degrees of freedom for uncertainty estimates:
-df_ID <- length(unique(pnts_all$ID)) - 1
-df_ID_season <- length(unique(pnts_all$ID_season)) - 1
-df_tripID <- length(unique(pnts_all$tripID)) - 1
 
 ## Store envronmental variables
 bathy_scaled <- unlist(pnts_all$bathy_scaled)
 chl_scaled <- unlist(pnts_all$chl_scaled)
 sst_scaled <- unlist(pnts_all$sst_scaled)
 
-var_map <- list(
-  bathy = bathy_scaled,
-  chl = chl_scaled,
-  sst = sst_scaled )
+var_map <- list(bathy = bathy_scaled, chl = chl_scaled, sst = sst_scaled )
 
-cond_res.list <- vector(mode = "list", length = length(env_vars))
+## Approximate degrees of freedom for uncertainty estimates:
+df_ID <- length(unique(pnts_all$ID)) - 1
+df_ID_season <- length(unique(pnts_all$ID_season)) - 1
+df_tripID <- length(unique(pnts_all$tripID)) - 1
 
-for (i in 1:length(env_vars)) {
-  
-  habitat_var = paste0(env_vars[i], "_scaled")
+cond_res.list <- vector(mode = "list", length = length(env_vars.pref))
 
-  # Get models
-  load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars[i], ".RData"))
-  load(paste0("Data_outputs/bbal_birdis_glmm_between_", env_vars[i], ".RData"))
+for (i in 1:length(env_vars.pref)) {
   
-  mod_within = get(paste0("bbal_birdis_glmm.within_", env_vars[i]))
-  mod_between = get(paste0("bbal_birdis_glmm.between_", env_vars[i]))
+  env_current <- var_map[[env_vars.pref[i]]]
   
-  ## Get environmental metrics ====
-  env_current <- var_map[[env_vars[i]]]
+  # Load models
+  load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars.pref[i], ".RData"))
+  load(paste0("Data_outputs/bbal_birdis_glmm_between_", env_vars.pref[i], ".RData"))
+
+  mod_within = get(paste0("bbal_birdis_glmm.within_", env_vars.pref[i]))
+  mod_between = get(paste0("bbal_birdis_glmm.between_", env_vars.pref[i]))
   
-  ## Summarise data 
-  meanX <- mean(env_current)
-  varX <- var(env_current)
-  xrange <- range(env_current)
+  # Estimate slope variances and conditional repeatability
+  res_between.summary <- extract_pref_metrics(mod_between, env_vars.pref[i], "between", env_current, "BBAL", "Bird Island")
+  res_within.summary <- extract_pref_metrics(mod_within, env_vars.pref[i], "within", env_current, "BBAL", "Bird Island")
   
-  # Between ==== 
-  
-  ## Estimate conditional repeatability ####
-  
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_between)$cond$ID), 0,
-    0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
-    nrow = 2) 
-  
-  res_between <- condR(
-    betaX = fixef(mod_between)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,    
-    Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_between.summary <- data.frame(var = res_between$Vi,
-                                    R2 = res_between$R2s, 
-                                    marginal_R2 = res_between$Rmar,
-                                    med_rpt = median(res_between$condR$condR),
-                                    LCL_rpt = quantile(res_between$condR$condR, 0.025, na.rm = TRUE),
-                                    UCL_rpt = quantile(res_between$condR$condR, 0.975, na.rm = TRUE),
-                                    env = env_vars[i],
-                                    species = "BBAL",
-                                    colony = "Bird Island", 
-                                    level = "between")
-  
-  rownames(res_between.summary) <- NULL
-  
-  ## Bootstrap conditional repeatability uncertainty ####
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_between)$cond
-  vcov_beta <- vcov(mod_between)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_between)$cond
-  var_int <- as.numeric(vc$ID[1,1])         
-  var_slope <- as.numeric(vc$ID.1[1,1])     
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty.between <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "between")
-  
-  
-  # Within ====
-  
-  ## Estimate conditional repeatability ####
-  
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
-    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
-    nrow = 2) 
-  
-  res_within <- condR(
-    betaX = fixef(mod_within)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,    
-    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_within.summary <- data.frame(var = res_within$Vi,
-                                   R2 = res_within$R2s, 
-                                   marginal_R2 = res_within$Rmar,
-                                   med_rpt = median(res_within$condR$condR),
-                                   LCL_rpt = quantile(res_within$condR$condR, 0.025, na.rm = TRUE),
-                                   UCL_rpt = quantile(res_within$condR$condR, 0.975, na.rm = TRUE),
-                                   env = env_vars[i],
-                                   species = "BBAL",
-                                   colony = "Bird Island", 
-                                   level = "within")
-  
-  rownames(res_within.summary) <- NULL
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_within)$cond
-  vcov_beta <- vcov(mod_within)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$ID_season[1,1])         
-  var_slope <- as.numeric(vc$ID_season.1[1,1])    
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID_season) / df_ID_season
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID_season) / df_ID_season
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-    
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty.within <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "within")
-  
-  condR_uncertainty <- rbind(condR_uncertainty.between, condR_uncertainty.within)
-  
-  res.summary <- rbind(res_within.summary, res_between.summary) %>% 
-    relocate(c(species, colony, level, env), .before = var)
-  
+  res.summary <- rbind(res_between.summary, res_within.summary)
   cond_res.list[[i]] <- res.summary
   
+  # Boostrap uncertainty in conditional repeatability
+  condR_uncertainty.between <- bootstrap_condR(mod_between, env_vars.pref[i], "between", n_sim, env_current)
+  condR_uncertainty.within <- bootstrap_condR(mod_within, env_vars.pref[i], "within", n_sim, env_current)
+
+  # Make the conditional repeatability plot
   condR_plot <- ggplot() +
-    geom_ribbon(data = condR_uncertainty %>% filter(level == "between"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_between, alpha = 0.4) +
-    geom_ribbon(data = condR_uncertainty %>% filter(level == "within"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_within, alpha = 0.4) +
-    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = col_between, size = 1) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = col_within, size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_between) +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_within) +
+    geom_ribbon(data = condR_uncertainty.between, aes(x = x, ymin = lower, ymax = upper), fill = col_between, alpha = 0.4) +
+    geom_ribbon(data = condR_uncertainty.within, aes(x = x, ymin = lower, ymax = upper), fill = col_within, alpha = 0.4) +
+    
+    geom_line(data = condR_uncertainty.between, aes(x=x, y=median), col = col_between, size = 1) +
+    geom_line(data = condR_uncertainty.within, aes(x=x, y=median), col = col_within, size = 1) +
+    
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_between) +
+    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_within) +
+    
     labs(y = "Conditional repeatability") +
     theme_bw() 
   
-  assign(paste0("bbal_birdis_", env_vars[i], "_condR_plot"), condR_plot)
+  assign(paste0("bbal_birdis_", env_vars.pref[i], "_condR_plot"), condR_plot)
   
   rm(mod_within, mod_between)
-  rm(list = paste0("bbal_birdis_glmm.within_", env_vars[i]))
-  rm(list = paste0("bbal_birdis_glmm.between_", env_vars[i]))
+  rm(list = paste0("bbal_birdis_glmm.within_", env_vars.pref[i]))
+  rm(list = paste0("bbal_birdis_glmm.between_", env_vars.pref[i]))
   gc()
   
 }
@@ -674,16 +403,16 @@ save(bbal_birdis_condR_results, file = "Data_outputs/bbal_birdis_condR_results.R
 
 rnd_effs.list <- list()
 
-for (i in 1:length(env_vars)) {
+for (i in 1:length(env_vars.pref)) {
 
-  habitat_var = paste0(env_vars[i], "_scaled")
+  habitat_var = paste0(env_vars.pref[i], "_scaled")
   
   # Get models
-  load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars[i], ".RData"))
-  load(paste0("Data_outputs/bbal_birdis_glmm_between_", env_vars[i], ".RData"))
+  load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars.pref[i], ".RData"))
+  load(paste0("Data_outputs/bbal_birdis_glmm_between_", env_vars.pref[i], ".RData"))
 
-  mod_within = get(paste0("bbal_birdis_glmm.within_", env_vars[i]))
-  mod_between = get(paste0("bbal_birdis_glmm.between_", env_vars[i]))
+  mod_within = get(paste0("bbal_birdis_glmm.within_", env_vars.pref[i]))
+  mod_between = get(paste0("bbal_birdis_glmm.between_", env_vars.pref[i]))
   
   mod_df <- mod_within$frame %>% separate(ID_season, into = c("ID", "season"), sep = "_", remove = F) %>% filter(used == 1)
   
@@ -705,7 +434,7 @@ for (i in 1:length(env_vars)) {
   rnd_eff.between <- get_rnd_effects(mod_between, habitat_var) %>%
     mutate(ring = ID, season = NA, season_type = "Between seasons")
   
-  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between) %>% mutate(env = env_vars[i])
+  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between) %>% mutate(env = env_vars.pref[i])
   
   rnd_effs.list[[i]] <- rnd_eff.all
   
@@ -713,6 +442,7 @@ for (i in 1:length(env_vars)) {
   predictions.ind$logit <- predictions.ind$intercept + predictions.ind$slope * predictions.ind$habitat_val
   predictions.ind$probability <- 1 / (1 + exp(-predictions.ind$logit))  
   
+
   ## Plot
   
   ### Set colours
@@ -729,7 +459,7 @@ for (i in 1:length(env_vars)) {
       theme(legend.position = "none") +
       labs(y = "Probability of use")
   
-  assign(paste0("bbal_birdis_", env_vars[i], "_pred_plot"), pred_plot)
+  assign(paste0("bbal_birdis_", env_vars.pref[i], "_pred_plot"), pred_plot)
   
 }
 
@@ -744,17 +474,25 @@ save(rnd_effs.out, file = "Data_outputs/bbal_birdis_habitat_selection.RData")
 
 bbal_birdis_pref_plot <- ggarrange(
   bbal_birdis_bathy_pred_plot +
-    labs(x = "Scaled bathymetry (m below sea level)") + theme(axis.title.x = element_blank()), 
+    labs(x = "Scaled bathymetry (m below sea level)") + 
+    theme(axis.title.x = element_blank()), 
   bbal_birdis_chl_pred_plot +
-    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
+    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
   bbal_birdis_sst_pred_plot +
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()), 
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()), 
   bbal_birdis_bathy_condR_plot +
-    labs(x = "Scaled bathymetry (m below sea level)") + ylim(0, 0.4) ,
+    ylim(0, 1) +
+    labs(x = "Scaled bathymetry (m below sea level)"),
   bbal_birdis_chl_condR_plot +
-    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + ylim(0, 0.4) + theme(axis.title.y = element_blank()),
+    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    ylim(0, 1) +
+    theme(axis.title.y = element_blank()),
   bbal_birdis_sst_condR_plot +
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + ylim(0, 0.4) + theme(axis.title.y = element_blank()),
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    ylim(0, 1) +
+    theme(axis.title.y = element_blank()),
           ncol = 3, nrow = 2)
 
 bbal_birdis_pref_plot <- annotate_figure(bbal_birdis_pref_plot, top = text_grob("BBAL Bird Island", face = "bold", size = 14))
@@ -774,287 +512,99 @@ dev.off()
 
 ```{r bbal_birdis_heritability_used }
 
-# (1) Load the data ----
+# Load & prep data ====
 load("Data_outputs/bbal_birdis_habitat_used_ranef.RData")
-
-ranefs.df_wide <- bbal_birdis_ranefs_used %>%
-  select(c(ring, season, trip, estimate, std.error, env)) %>%
-  pivot_wider(names_from = env, 
-              values_from = c(estimate, std.error),
-               names_glue = "{env}_{.value}")
-
-pedigree.df <- read.csv("Data_inputs/bbal_birdis_pedigree.csv")
-pedigree.df %<>% dplyr::select(-Year)
-
-pedigree.df$dam <- as.character(pedigree.df$dam)
-pedigree.df$sire <- as.character(pedigree.df$sire)
+bbal_birdis_pedigree.df <- read.csv("Data_inputs/bbal_birdis_pedigree.csv") %>% select(-Year)
 
 # Fix birds that are recorded as both dams and sires
-pedigree.df$sire[pedigree.df$id == "1271009"] <- "1318880"
-pedigree.df$dam[pedigree.df$id == "1271009"] <- "1318939"
+bbal_birdis_pedigree.df$sire[bbal_birdis_pedigree.df$id == "1271009"] <- "1318880"
+bbal_birdis_pedigree.df$dam[bbal_birdis_pedigree.df$id == "1271009"] <- "1318939"
 
-# (2) Make the pedigree ----
-
-Amat <- make_Amat(ranefs.df_wide, pedigree.df)
-
-# (3) Fit univariate models covering responses to each environment ----
-
-ranefs.df_wide %<>% mutate(ring_pe = ring, animal = ring)
-
-priors_animal <- c(
-  prior(normal(0, 1), class = "Intercept"),
-  prior(student_t(3,0,1), class = "sd", group = "ring_pe"), 
-  prior(exponential(1), class = "sd", group = "animal"),
-  prior(student_t(3, 0, 1), class = "sigma"))
-
-# Build univariate models
-bbal_birdis_brm.heritability_used_bathy <- brm(
-  bathy_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(bbal_birdis_brm.heritability_used_bathy, file = "Data_outputs/bbal_birdis_heritability_used_bathy.RData")
-
-bbal_birdis_brm.heritability_used_chl <- brm(
-  chlA_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(bbal_birdis_brm.heritability_used_chl, file = "Data_outputs/bbal_birdis_heritability_used_chl.RData")
-
-bbal_birdis_brm.heritability_used_sst <- brm(
-  SST_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(bbal_birdis_brm.heritability_used_sst, file = "Data_outputs/bbal_birdis_heritability_used_sst.RData")
+data_prep <- prep_used_heritability_data(bbal_birdis_ranefs_used, bbal_birdis_pedigree.df)
+bbal_birdis_used_h2.df <- data_prep$data
+bbal_birdis_used_h2.Amat <- data_prep$Amat
 
 
-# Estimate heritability
-h2_bathy <- get_h2(bbal_birdis_brm.heritability_used_bathy)
-h2_chl <- get_h2(bbal_birdis_brm.heritability_used_chl)
-h2_sst <- get_h2(bbal_birdis_brm.heritability_used_sst)
+# Fit models ====
+models_list <- lapply(env_vars.used, function(e) {
+  fit_habitat_heritability_model("estimate", e, bbal_birdis_used_h2.df, bbal_birdis_used_h2.Amat, priors_animal, "Data_outputs/bbal_birdis_")
+})
+names(models_list) <- env_vars.used
 
-posteriors <- data.frame(cbind(h2_bathy, h2_chl, h2_sst))
-posteriors %<>% 
-  pivot_longer(cols = starts_with("h2"),
-               names_to = "env",
-               values_to = "h2") %>%
+
+# Extract h2 ==== 
+bbal_birdis_h2_used.posteriors <- purrr::map_df(models_list, ~ {
+  data.frame(h2 = get_h2(.x))
+}, .id = "env") %>%
   mutate(env = recode(env,
-      "h2_bathy" = "Bathymetry",
-      "h2_chl" = "Chlorophyll",
-      "h2_sst" = "SST")) %>%
-  arrange(env) %>%
-  mutate(env = factor(env, levels = rev(unique(env))))
+      "bathy" = "Bathymetry",
+      "chlA"   = "Chlorophyll",
+      "SST"   = "SST")) %>%
+  mutate(env = factor(env, levels = c("SST", "Chlorophyll", "Bathymetry"))) %>%
+  rename(h2 = var1)
 
+rownames(bbal_birdis_h2_used.posteriors) <- NULL
 
-ggplot(posteriors, aes(x = h2, y = env)) +
-  geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
-  labs(x = "Additive genetic heritability (h²)", y = "") +
-  theme_bw()
-
-save(posteriors, file = "Data_outputs/bbal_birdis_habitat_used_heritability_posteriors.RData")
-
+save(bbal_birdis_h2_used.posteriors, file = "Data_outputs/bbal_birdis_habitat_used_h2_posteriors.RData")
 
 ```
 
 #### Habitat preference
 
+```{r bbal_birdis_heritability_pref }
 
-#### Extract individual slopes
-
-```{r bbal_birdis_extract_slopes}
+# Extract slopes ====
 
 load("Data_inputs/bbal_birdis_habitat_data.RData")
-
-## Store envronmental variables
-env_vars = c("bathy", "chl", "sst")
-
-## Get meta to recover later
 pnts_meta <- pnts_all %>% select(c(tripID, phase)) %>% distinct()
 
-slopes.list <- vector(mode = "list", length = length(env_vars))
-
-for (i in 1:length(env_vars)) {
-
-  habitat_var = paste0(env_vars[i], "_scaled")
-  
-  # Get models
-  load(paste0("Data_outputs/bbal_birdis_glmm_within_", env_vars[i], ".RData"))
-  my_mod = get(paste0("bbal_birdis_glmm.within_", env_vars[i]))
-  
-  # Extract slopes - mean and SE
-  slopes <- ranef(my_mod)$cond$tripID
-  
-  slopes_df <- data.frame(
-        ID = rownames(slopes),
-        slope = slopes[,2])
-
-  slopes_df %<>% 
-    left_join(pnts_meta %>% rename(ID = tripID), by = "ID") %>%
-    separate(ID, into = c("ring", "season", "tripID"), remove = FALSE) %>%
-    mutate(env = env_vars[i]) %>%
-    relocate(c(ring, season, tripID))
-
-  slopes.list[[i]] <- slopes_df
-  
-}
-
-bbal_birdis_habitat_slopes <- do.call("rbind", slopes.list)
+bbal_birdis_habitat_slopes <- extract_habitat_slopes(env_vars.pref, "bbal_birdis", pnts_meta)
 save(bbal_birdis_habitat_slopes, file = "Data_outputs/bbal_birdis_habitat_slopes.RData")
 
-```
 
-#### Estimate heritability
+# Estimate heritability ===
 
-```{r bbal_birdis_heritability }
-
-# (1) Load the data ----
-load("Data_outputs/bbal_birdis_habitat_slopes.RData")
-
-pedigree.df <- read.csv("Data_inputs/bbal_birdis_pedigree.csv")
-pedigree.df %<>% dplyr::select(-Year)
+## Prep the data
+bbal_birdis_pedigree.df <- read.csv("Data_inputs/bbal_birdis_pedigree.csv") %>% dplyr::select(-Year)
 
 # Fix birds that are recorded as both dams and sires
-pedigree.df$sire[pedigree.df$id == "1271009"] <- "1318880"
-pedigree.df$dam[pedigree.df$id == "1271009"] <- "1318939"
+bbal_birdis_pedigree.df$sire[bbal_birdis_pedigree.df$id == "1271009"] <- "1318880"
+bbal_birdis_pedigree.df$dam[bbal_birdis_pedigree.df$id == "1271009"] <- "1318939"
 
-pedigree.df$dam <- as.character(pedigree.df$dam)
-pedigree.df$sire <- as.character(pedigree.df$sire)
-
-# (2) Make the pedigree ----
-
-Amat <- make_Amat(bbal_birdis_habitat_slopes, pedigree.df)
-
-## Optional - visualise the pruned peigree (go into function to get pruned pedigree)
-
-# edges <- pedigree.pruned %>%
-#   tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
-#   dplyr::select(from = value, to = id)
-# 
-# ped_graph <- graph_from_data_frame(edges, directed = TRUE)
-# 
-# plot(ped_graph,
-#      vertex.size = 3,
-#      vertex.label = NA,
-#      edge.arrow.size = 0.2,
-#      layout = layout_with_sugiyama(ped_graph)$layout)
+data_prep <- prep_slope_heritability_data(bbal_birdis_habitat_slopes, bbal_birdis_pedigree.df)
+bbal_birdis_pref_h2.df <- data_prep$data
+bbal_birdis_pref_h2.Amat <- data_prep$Amat
 
 
-## Optional - visualise sparse matrix
+# Fit models ====
 
-# A_sparse <- as(Amat, "dgCMatrix")
-# summary(A_sparse)
-
-### Check how many non-zero off-diagonal elements
-# nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
-# density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
-# cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
-# 
-# pheatmap(as.matrix(Amat), show_rownames = FALSE, show_colnames = FALSE)
+models_list <- lapply(env_vars.pref, function(e) {
+  fit_habitat_heritability_model("slope", e, bbal_birdis_pref_h2.df, bbal_birdis_pref_h2.Amat, priors_animal, "Data_outputs/bbal_birdis_")
+})
+names(models_list) <- env_vars.pref
 
 
-# (3) Fit multivariate model covering responses to each environment ----
-bbal_birdis_habitat_slopes %<>%
-  mutate(animal = ring, 
-         tripID = ID, 
-         ring_pe = ring)
-
-## Make dataframe wide (i.e. slope per environment)
-bbal_birdis_slopes.wide <- bbal_birdis_habitat_slopes %>%
-  pivot_wider(names_from = env, 
-              values_from = slope,
-              names_glue = "{env}_slope")
-
-## Only retain birds with > 1 trip
-bbal_birdis_slopes.wide %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% ungroup() %>% select(-n_trips)
-
-# Build univariate models and extract h2
-
-bbal_birdis_brm.heritability_bathy <- brm(
-  bathy_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = bbal_birdis_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_bathy <- (VarCorr(bbal_birdis_brm.heritability_bathy, summary = FALSE)$animal$sd)^2
-v_r_bathy <- (VarCorr(bbal_birdis_brm.heritability_bathy, summary = FALSE)$residual$sd)^2
-h2_bathy <- as.mcmc(v_animal_bathy / (v_animal_bathy + v_r_bathy) )
-
-save(bbal_birdis_brm.heritability_bathy, file = "Data_outputs/bbal_birdis_habitat_pref_heritability_bathy.RData")
-
-
-bbal_birdis_brm.heritability_chl <- brm(
-  chl_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = bbal_birdis_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_chl <- (VarCorr(bbal_birdis_brm.heritability_chl, summary = FALSE)$animal$sd)^2
-v_r_chl <- (VarCorr(bbal_birdis_brm.heritability_chl, summary = FALSE)$residual$sd)^2
-h2_chl <- as.mcmc(v_animal_chl / (v_animal_chl + v_r_chl) )
-
-save(bbal_birdis_brm.heritability_chl, file = "Data_outputs/bbal_birdis_habitat_pref_heritability_chl.RData")
-
-
-bbal_birdis_brm.heritability_sst <- brm(
-  sst_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = bbal_birdis_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_sst <- (VarCorr(bbal_birdis_brm.heritability_sst, summary = FALSE)$animal$sd)^2
-v_r_sst <- (VarCorr(bbal_birdis_brm.heritability_sst, summary = FALSE)$residual$sd)^2
-h2_sst <- as.mcmc(v_animal_sst / (v_animal_sst + v_r_sst) )
-
-save(bbal_birdis_brm.heritability_sst, file = "Data_outputs/bbal_birdis_habitat_pref_heritability_sst.RData")
-
-
-# Extract posteriors of h2
-
-posteriors <- data.frame(cbind(h2_bathy, h2_chl, h2_sst))
-colnames(posteriors) <- c("h2_bathy", "h2_chl", "h2_sst")
-posteriors %<>% 
-  pivot_longer(cols = starts_with("h2"),
-               names_to = "env",
-               values_to = "h2") %>%
+# Extract h2 ==== 
+bbal_birdis_h2_slope.posteriors <- purrr::map_df(models_list, ~ {
+  data.frame(h2 = get_h2(.x))
+}, .id = "env") %>%
   mutate(env = recode(env,
-      "h2_bathy" = "Bathymetry",
-      "h2_chl" = "Chlorophyll",
-      "h2_sst" = "SST")) %>%
-  arrange(env) %>%
-  mutate(env = factor(env, levels = rev(unique(env))))
+      "bathy" = "Bathymetry",
+      "chl"   = "Chlorophyll",
+      "sst"   = "SST")) %>%
+  mutate(env = factor(env, levels = c("SST", "Chlorophyll", "Bathymetry"))) %>%
+  rename(h2 = var1)
 
-save(posteriors, file = "Data_outputs/bbal_birdis_habitat_pref_heritability_posteriors.RData")
+rownames(bbal_birdis_h2_slope.posteriors) <- NULL
+
+save(bbal_birdis_h2_slope.posteriors, file = "Data_outputs/bbal_birdis_habitat_pref_h2_posteriors.RData")
 
 ggplot(posteriors, aes(x = h2, y = env)) +
   geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
   labs(x = "Additive genetic heritability (h²)", y = "") +
   theme_bw()
 
-
 ```
-
-- Posterior distributions for h2 are biomdal, indicating stong confounding between additive genetic variance and permanent environmental (repeatability) effects
-- Collapsing to one slope per bird gives a model that fails to converge with highly uncertain posteriors - i.e. when repeatability information is removed, there is insufficient signal to estimate heritability
-- Overall, reasonable evidence that while there may be individual consistency, preference is unlikely to be heritable
-
-e.g. In multivariate animal models, posterior distributions of heritability estimates for bathymetry and chlorophyll were bimodal, reflecting poor separation of additive genetic variance from permanent environmental effects. A diagnostic single-slope model, in which one slope per bird was analysed, failed to converge and yielded highly uncertain variance component estimates. Together these results suggest that while individual foraging preferences are partially repeatable, there is no strong evidence that this variation is heritable.
 
 ## Kerguelen
 
@@ -1154,81 +704,13 @@ save(pnts_all, file = "Data_inputs/bbal_ker_habitat_data.RData")
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
-pnts.used <- pnts_all %>% filter(used == 1)
+bbal_ker_pnts_all <- prep_used_data(pnts_all, "1 hours")
 
-## Remove birds with only one trip
-pnts.used %<>%
-  group_by(ID_season) %>%
-  mutate(n_trips = n_distinct(tripID)) %>%
-  filter(n_trips > 1) %>%
-  select(-n_trips)
+my_mod <- "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID) + (1 | ID_season) "
 
-## Thin to every 3 hours to reduce autocorrelation
-pnts.thinned <- pnts.used %>%
-  # group_by(tripID, date_hourly) %>%
-  # slice(1) %>%
-  mutate(time_3h = floor_date(date_hourly, "3 hours")) %>%
-  group_by(tripID, time_3h) %>%
-  slice(1) %>%
-  ungroup() %>%
-  arrange(tripID, date_hourly)
-
-## Set loop parameters
-env_vars <- c("bathy", "chlA", "SST")
-rpt_df <- data.frame(env_var = character(), rpt_within = numeric(), rpt_across = numeric())
-var.list <- list()
-ranef.list <- list()
-
-for (i in 1:length(env_vars)) {
-  
-  # Fit the linear mixed model
-  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID) + (1 | ID_season) ")), data = pnts.thinned)
-  
-  ## Bootstrap 95% CIs
-  set.seed(123)
-  boot <- bootMer(mod, FUN = repeat_func, nsim = my_nsim, .progress = "txt")
-  rpt_CI <- apply(boot$t, 2, function(x) quantile(x, c(0.025, 0.975)))
-
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
-    mutate(env = env_vars[i])
-  
-  ranef.list[[i]] <- ring_ranefs
-  
-  # Calculate repeatability
-  var_components <- as.data.frame(VarCorr(mod))
-  var_across <- var_components[var_components$grp == "ID", "vcov"]
-  var_within <- var_components[var_components$grp == "ID_season", "vcov"] + var_across
-  var_total <- sum(var_components$vcov)
-  
-  ## Calculate repeatability
-  rpt_within <- var_within / var_total 
-  rpt_across <- var_across / var_total 
-  
-  # Outputs
-  var_df <- var_components %>%
-     select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
-     mutate(across(where(is.numeric), ~ round(.x, 3)),
-            Environment = env_vars[i],
-            rpt_within = rpt_within,
-            rpt_across = rpt_across,
-            LCL_within = rpt_CI[1,1],
-            UCL_within = rpt_CI[2,1],
-            LCL_across = rpt_CI[1,2],
-            UCL_across = rpt_CI[2,2]) %>%
-     rename(Effect = grp, Variance = variance, "Std. dev" = std_dev) %>%
-     select(-name) %>%
-    relocate(Environment, .before = Effect)
-
-  var.list[[i]] <- var_df
-  
-}
-
-
-bbal_ker_var_used <- do.call("rbind", var.list)
-bbal_ker_ranefs_used <- do.call("rbind", ranef.list)
+bbal_ker_vars <- model_habitat_use(bbal_ker_pnts_all, env_vars.used, "BBAL", "Kerguelen", n_sim, my_mod)
+bbal_ker_var_used <- bbal_ker_vars$variance
+bbal_ker_ranefs_used <- bbal_ker_vars$ranef
 
 save(bbal_ker_var_used, file = "Data_outputs/bbal_ker_habitat_used_variances.RData")
 save(bbal_ker_ranefs_used, file = "Data_outputs/bbal_ker_habitat_used_ranef.RData")
@@ -1241,18 +723,14 @@ save(bbal_ker_ranefs_used, file = "Data_outputs/bbal_ker_habitat_used_ranef.RDat
 
 load("Data_outputs/bbal_ker_habitat_used_ranef.RData")
 
-ranefs.df %<>%
- mutate(env = case_when(
-  env == "bathy" ~ "Bathymetry (m below sea level)",
-  env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
-  env == "SST"   ~ "SST (°C)" ))
+bbal_ker_ranefs_used %<>%
+  filter(group %in% c("ID", "ID_season")) %>%
+  mutate(env = case_when(
+    env == "bathy" ~ "Bathymetry (m below sea level)",
+    env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
+    env == "SST"   ~ "SST (°C)" ))
 
-env_colours <- c(
-  "Bathymetry (m below sea level)" = bathy_col,
-  "Chlorophyll (mg Chl m^-3)" = chl_col,
-  "SST (°C)" = sst_col)
-
-split_df <- ranefs.df %>% group_by(env) %>% group_split()
+split_df <- bbal_ker_ranefs_used %>% group_by(env) %>% group_split()
 
 lapply(split_df, make_plot)
 plots <- lapply(split_df, make_plot)
@@ -1273,27 +751,6 @@ ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
 dev.off()
 
-
-```
-
-```{r bbal_ker_table_variance_habitat_used}
-
-load("Data_outputs/bbal_ker_habitat_used_variances.RData")
-
-var.table <- var.df_all %>%
-  mutate(Environment = case_when(
-    Environment == "bathy" ~ "Bathymetry",
-    Environment == "chlA" ~ "Chlorphyll-a",
-    TRUE ~ "SST" )) %>%
-  mutate(across(3:6, ~ round(.x, 2))) %>%
-  rename("Within-season rpt" = rpt_within,
-         "Across season rpt" = rpt_across)
-
-kable(var.table, format = "html", 
-  caption = 'Table X. Variances and repeatability associated with random intercepts from the habitat used model.') %>%
-  row_spec(c(6,11), extra_css = "border-top: 1px dotted;") %>%
-  collapse_rows(columns = c(1, 5, 6)) %>%
-  kable_classic(font_size = 12)
 
 ```
 
@@ -1396,278 +853,76 @@ rm(bbal_ker_glmm.between_sst); gc()
 
 ```
 
-
 #### Conditional repeatability
 
 ```{r bbal_ker_cond_repeatability}
 
 load("Data_inputs/bbal_ker_habitat_data.RData")
 
-# [ 1A ] Calculate conditional repeatability - Chl & SST ------
+## Store envronmental variables
+bathy_scaled <- unlist(pnts_all$bathy_scaled)
+chl_scaled <- unlist(pnts_all$chl_scaled)
+sst_scaled <- unlist(pnts_all$sst_scaled)
 
-## Decide on simulation number
-n_sim <- 100
+var_map <- list(bathy = bathy_scaled, chl = chl_scaled, sst = sst_scaled )
 
 ## Approximate degrees of freedom for uncertainty estimates:
 df_ID <- length(unique(pnts_all$ID)) - 1
 df_ID_season <- length(unique(pnts_all$ID_season)) - 1
 df_tripID <- length(unique(pnts_all$tripID)) - 1
 
-## Store envronmental variables
-env_vars = c("chl", "sst", "bathy")
+cond_res.list <- vector(mode = "list", length = 2)
 
-bathy_scaled <- unlist(pnts_all$bathy_scaled)
-chl_scaled <- unlist(pnts_all$chl_scaled)
-sst_scaled <- unlist(pnts_all$sst_scaled)
+# [ 1A ] Calculate conditional repeatability - Chl & SST ------
 
-var_map <- list(
-  sst = sst_scaled,
-  chl = chl_scaled )
+for (i in 2:3) { 
 
-cond_res.list <- vector(mode = "list", length = length(env_vars))
-
-for (i in 1:2) {
-
-  habitat_var = paste0(env_vars[i], "_scaled")
+  env_current <- var_map[[env_vars.pref[i]]]
+  print(env_vars.pref[i])
   
-  # Get models
-  load(paste0("Data_outputs/bbal_ker_glmm_within_", env_vars[i], ".RData"))
-  load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars[i], ".RData"))
-
-  mod_within = get(paste0("bbal_ker_glmm.within_", env_vars[i]))
-  mod_between = get(paste0("bbal_ker_glmm.between_", env_vars[i]))
+  # Load models
+  load(paste0("Data_outputs/bbal_ker_glmm_within_", env_vars.pref[i], ".RData"))
+  load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars.pref[i], ".RData"))
   
-  ## Get environmental metrics ====
-  env_current <- var_map[[env_vars[i]]]
+  mod_within = get(paste0("bbal_ker_glmm.within_", env_vars.pref[i]))
+  mod_between = get(paste0("bbal_ker_glmm.between_", env_vars.pref[i]))
   
-  ## Summarise data 
-  meanX <- mean(env_current)
-  varX <- var(env_current)
-  xrange <- range(env_current)
+  # Estimate slope variances and conditional repeatability
+  res_between.summary <- extract_pref_metrics(mod_between, env_vars.pref[i], "between", env_current, "BBAL", "Kerguelen")
+  res_within.summary <- extract_pref_metrics(mod_within, env_vars.pref[i], "within", env_current, "BBAL", "Kerguelen")
   
-  # Between ==== 
+  res.summary <- rbind(res_between.summary, res_within.summary)
+  cond_res.list[[i]] <- res.summary
   
-  ## Estimate conditional repeatability ####
-  
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_between)$cond$ID), 0,
-    0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
-    nrow = 2) 
-  
-  res_between <- condR(
-    betaX = fixef(mod_between)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,    
-    Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_between.summary <- data.frame(var = res_between$Vi,
-                                    R2 = res_between$R2s, 
-                                    marginal_R2 = res_between$Rmar,
-                                    med_rpt = median(res_between$condR$condR),
-                                    LCL_rpt = quantile(res_between$condR$condR, 0.025, na.rm = TRUE),
-                                    UCL_rpt = quantile(res_between$condR$condR, 0.975, na.rm = TRUE),
-                                    env = env_vars[i],
-                                    species = "BBAL",
-                                    colony = "Kerguelen", 
-                                    level = "between")
-  
-  rownames(res_between.summary) <- NULL
-  
-  ## Bootstrap conditional repeatability uncertainty ####
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_between)$cond
-  vcov_beta <- vcov(mod_between)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_between)$cond
-  var_int <- as.numeric(vc$ID[1,1])         
-  var_slope <- as.numeric(vc$ID.1[1,1])     
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty.between <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "between")
-  
-  
-  # Within ====
-  
-  ## Estimate conditional repeatability ####
-  
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
-    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
-    nrow = 2) 
-  
-  res_within <- condR(
-    betaX = fixef(mod_within)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,    
-    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_within.summary <- data.frame(var = res_within$Vi,
-                                   R2 = res_within$R2s, 
-                                   marginal_R2 = res_within$Rmar,
-                                   med_rpt = median(res_within$condR$condR),
-                                   LCL_rpt = quantile(res_within$condR$condR, 0.025, na.rm = TRUE),
-                                   UCL_rpt = quantile(res_within$condR$condR, 0.975, na.rm = TRUE),
-                                   env = env_vars[i],
-                                   species = "BBAL",
-                                   colony = "Kerguelen", 
-                                   level = "within")
-  
-  rownames(res_within.summary) <- NULL
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_within)$cond
-  vcov_beta <- vcov(mod_within)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$ID_season[1,1])         
-  var_slope <- as.numeric(vc$ID_season.1[1,1])    
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID_season) / df_ID_season
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID_season) / df_ID_season
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-    
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty.within <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "within")
+  # Boostrap uncertainty in conditional repeatability
+  condR_uncertainty.between <- bootstrap_condR(mod_between, env_vars.pref[i], "between", n_sim, env_current)
+  condR_uncertainty.within <- bootstrap_condR(mod_within, env_vars.pref[i], "within", n_sim, env_current)
   
   condR_uncertainty <- rbind(condR_uncertainty.between, condR_uncertainty.within)
   
-  res.summary <- rbind(res_within.summary, res_between.summary) %>% 
-    relocate(c(species, colony, level, env), .before = var)
-  
-  cond_res.list[[i]] <- res.summary
-  
+  # Make the conditional repeatability plot
   condR_plot <- ggplot() +
-    geom_ribbon(data = condR_uncertainty.between %>% filter(level == "between"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_between, alpha = 0.4) +
-    geom_ribbon(data = condR_uncertainty.within %>% filter(level == "within"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_within, alpha = 0.4) +
-    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = col_between, size = 1) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = col_within, size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_between) +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_within) +
+    geom_ribbon(data = condR_uncertainty %>% filter(level == "between"), aes(x = x, ymin = lower, ymax = upper), fill = col_between, alpha = 0.4) +
+    geom_ribbon(data = condR_uncertainty %>% filter(level == "within"), aes(x = x, ymin = lower, ymax = upper), fill = col_within, alpha = 0.4) +
+    
+    geom_line(data = condR_uncertainty.between, aes(x=x, y=median), col = col_between, size = 1) +
+    geom_line(data = condR_uncertainty.within, aes(x=x, y=median), col = col_within, size = 1) +
+    
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_between) +
+    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_within) +
     labs(y = "Conditional repeatability") +
     theme_bw() 
-
-  assign(paste0("bbal_ker_", env_vars[i], "_condR_plot"), condR_plot)
+  
+  assign(paste0("bbal_ker_", env_vars.pref[i], "_condR_plot"), condR_plot)
   
   rm(mod_within, mod_between)
-  rm(list = paste0("bbal_ker_glmm.within_", env_vars[i]))
-  rm(list = paste0("bbal_ker_glmm.between_", env_vars[i]))
+  rm(list = paste0("bbal_ker_glmm.within_", env_vars.pref[i]))
+  rm(list = paste0("bbal_ker_glmm.between_", env_vars.pref[i]))
   gc()
-  
 }
 
 condR_results <- do.call("rbind", cond_res.list)
+
 
 # [ 1B ] Calculate conditional repeatability - Bathymetry ------
 
@@ -1677,171 +932,17 @@ condR_results <- do.call("rbind", cond_res.list)
 load("Data_outputs/bbal_ker_glmm_between_bathy.RData")
 mod_between = get("bbal_ker_glmm.between_bathy")
 
-## Extract variance-covariance matrices of random effects
-vc <- VarCorr(mod_between)$cond
-V_ID_intercept <- as.numeric(vc$ID[1,1])
-V_tripID <- as.numeric(vc$tripID[1,1])
-V_slopes_matrix <- vc$ID.1 
-
-## Extract variances (diagonal) for each bathymetry level slope
-V_slope <- diag(V_slopes_matrix)
-names(V_slope) <- colnames(V_slopes_matrix)
-  
-## Residual variance for binomial logistic link
-V_residual <- (pi^2) / 3
-
-## Total random variance per level
-V_random <- V_ID_intercept + V_slope + V_tripID
-V_total <- V_ID_intercept + V_slope + V_tripID + V_residual
-
-## Conditional repeatability per level
-R2 <- V_random / V_total
-
-R_cond.df_between <- data.frame(R2) 
-R_cond.df_between <- cbind(rownames(R_cond.df_between), data.frame(R_cond.df_between, row.names = NULL))
-R_cond.df_between %<>%
-  mutate(species = "BBAL",
-         colony = "Kerguelen",
-         level = "between", 
-         var_slope = V_slope,
-         R2 = R2,
-         marginal_R2 = NA) %>%
-  rename(env = `rownames(R_cond.df_between)`) %>%
-  relocate(c(species, colony, level, env, var_slope, R2, marginal_R2))
-
-R_cond.df_between$env <- factor(R_cond.df_between$env, levels = c("dist_shelf_binon_shelf", "dist_shelf_binnear_break", "dist_shelf_binoff_shelf"))
-
-# Boostrap uncertainty ----
-
-# Storage matrix for simulated repeatabilities (rows = simulations, cols = slope levels)
-rpt_sim <- matrix(NA, nrow = n_sim, ncol = length(V_slope))
-colnames(rpt_sim) <- names(V_slope)
-
-for(i in seq_len(n_sim)){
-  # Simulate variance components from scaled chi-square
-  var_int_sim <- V_ID_intercept * rchisq(1, df_ID) / df_ID
-  var_tripID_sim <- V_tripID * rchisq(1, df_tripID) / df_tripID
-  
-  var_slope_sim <- sapply(V_slope, function(v) v * rchisq(1, df_ID) / df_ID)
-
-  # Calculate conditional repeatability for each slope level
-  for(j in seq_along(var_slope_sim)){
-    V_random_sim <- var_int_sim + var_slope_sim[j] + var_tripID_sim
-    V_total_sim <- V_random_sim + V_residual
-    rpt_sim[i, j] <- V_random_sim / V_total_sim
-  }
-}
-
-# Summarize simulation results
-rpt_summary <- apply(rpt_sim, 2, function(x) {
-  c(
-    median = median(x, na.rm=TRUE),
-    lower = quantile(x, 0.025, na.rm=TRUE),
-    upper = quantile(x, 0.975, na.rm=TRUE)
-  )
-}) %>% t() %>% as.data.frame()
-
-rpt_summary$env <- rownames(rpt_summary)
-rpt_summary %<>%
-  rename(med_rpt = median, LCL_rpt = `lower.2.5%`, UCL_rpt = `upper.97.5%`) %>%
-  select(env, med_rpt, LCL_rpt, UCL_rpt) %>%
-  mutate(env = as.factor(env))
-
-## Merge them with the main dataframe for plotting 
-R_cond.df_between %<>% left_join(rpt_summary, by = "env")
-
-
-
-# Within ####
-
-# Calculate repeatability ----
-
 load("Data_outputs/bbal_ker_glmm_within_bathy.RData")
 mod_within = get("bbal_ker_glmm.within_bathy")
 
-# Extract variance-covariance matrices of random effects
-vc <- VarCorr(mod_within)$cond
-V_IDseason_intercept <- as.numeric(vc$ID_season[1,1])
-V_tripID <- as.numeric(vc$tripID[1,1])
-V_slopes_matrix <- vc$ID_season.1 
+R_cond.df_between <- process_categorical_slopes(mod_between, "between", n_sim)
+R_cond.df_between$env <- factor(R_cond.df_between$env, levels = c("dist_shelf_binon_shelf", "dist_shelf_binnear_break", "dist_shelf_binoff_shelf"))
 
-# Extract variances (diagonal) for each bathymetry level slope
-V_slope <- diag(V_slopes_matrix)
-names(V_slope) <- colnames(V_slopes_matrix)
-  
-# Residual variance for binomial logistic link
-V_residual <- (pi^2) / 3
-
-# Total random variance per level
-V_random <- V_IDseason_intercept + V_slope + V_tripID
-V_total <- V_IDseason_intercept + V_slope + V_tripID + V_residual
-
-# Conditional repeatability per level
-R2 <- V_random / V_total
-
-R_cond.df_within <- data.frame(R2) 
-R_cond.df_within <- cbind(rownames(R_cond.df_within), data.frame(R_cond.df_within, row.names = NULL))
-R_cond.df_within %<>%
-  mutate(species = "BBAL",
-         colony = "Kerguelen",
-         level = "within", 
-         var_slope = V_slope,
-         R2 = R2,
-         marginal_R2 = NA) %>%
-  rename(env = `rownames(R_cond.df_within)`) %>%
-  relocate(c(species, colony, level, env, var_slope, R2, marginal_R2))
-
+R_cond.df_within <- process_categorical_slopes(mod_within, "within", n_sim)
 R_cond.df_within$env <- factor(R_cond.df_within$env, levels = c("dist_shelf_binon_shelf", "dist_shelf_binnear_break", "dist_shelf_binoff_shelf"))
 
-
-# Boostrap uncertainty ----
-
-# Storage matrix for simulated repeatabilities (rows = simulations, cols = slope levels)
-rpt_sim <- matrix(NA, nrow = n_sim, ncol = length(V_slope))
-colnames(rpt_sim) <- names(V_slope)
-
-for(i in seq_len(n_sim)){
-  # Simulate variance components from scaled chi-square
-  var_int_sim <- V_IDseason_intercept * rchisq(1, df_ID_season) / df_ID_season
-  var_tripID_sim <- V_tripID * rchisq(1, df_tripID) / df_tripID
-  
-  var_slope_sim <- sapply(V_slope, function(v) v * rchisq(1, df_ID_season) / df_ID_season)
-
-  # Calculate conditional repeatability for each slope level
-  for(j in seq_along(var_slope_sim)){
-    V_random_sim <- var_int_sim + var_slope_sim[j] + var_tripID_sim
-    V_total_sim <- V_random_sim + V_residual
-    rpt_sim[i, j] <- V_random_sim / V_total_sim
-  }
-}
-
-# Summarize simulation results
-rpt_summary <- apply(rpt_sim, 2, function(x) {
-  c(
-    median = median(x, na.rm=TRUE),
-    lower = quantile(x, 0.025, na.rm=TRUE),
-    upper = quantile(x, 0.975, na.rm=TRUE)
-  )
-}) %>% t() %>% as.data.frame()
-
-rpt_summary$env <- rownames(rpt_summary)
-rpt_summary %<>%
-  rename(med_rpt = median, LCL_rpt = `lower.2.5%`, UCL_rpt = `upper.97.5%`) %>%
-  select(env, med_rpt, LCL_rpt, UCL_rpt) %>%
-  mutate(env = as.factor(env))
-
-## Merge them with the main dataframe for plotting 
-R_cond.df_within %<>% left_join(rpt_summary, by = "env")
-
-
-# Bind it all together ====
-
-bbal_ker_condR_results <- rbind(condR_results %>% rename(var_slope = var), R_cond.df_between, R_cond.df_within)
-bbal_ker_condR_results %<>% rename(var = var_slope)
-
+bbal_ker_condR_results <- rbind(condR_results, R_cond.df_between, R_cond.df_within)
 save(bbal_ker_condR_results, file = "Data_outputs/bbal_ker_condR_results.RData")
-
-
 
 
 # Make the plot ====
@@ -1865,20 +966,20 @@ assign("bbal_ker_bathy_condR_plot", condR_plot)
 
 # [ 2 ] Plot individual slopes ---- 
 
-env_vars = c("chl", "sst", "bathy")
+env_vars.pref = c("chl", "sst", "bathy")
 
 rnd_effs.list <- list()
 
 for (i in 1:2) {
 
-  habitat_var = paste0(env_vars[i], "_scaled")
+  habitat_var = paste0(env_vars.pref[i], "_scaled")
   
   # Get models
-  load(paste0("Data_outputs/bbal_ker_glmm_within_", env_vars[i], ".RData"))
-  load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars[i], ".RData"))
+  load(paste0("Data_outputs/bbal_ker_glmm_within_", env_vars.pref[i], ".RData"))
+  load(paste0("Data_outputs/bbal_ker_glmm_between_", env_vars.pref[i], ".RData"))
 
-  mod_within = get(paste0("bbal_ker_glmm.within_", env_vars[i]))
-  mod_between = get(paste0("bbal_ker_glmm.between_", env_vars[i]))
+  mod_within = get(paste0("bbal_ker_glmm.within_", env_vars.pref[i]))
+  mod_between = get(paste0("bbal_ker_glmm.between_", env_vars.pref[i]))
   
   mod_df <- mod_within$frame %>% separate(ID_season, into = c("ID", "season"), sep = "_", remove = F) %>% filter(used == 1)
   
@@ -1900,7 +1001,7 @@ for (i in 1:2) {
   rnd_eff.between <- get_rnd_effects(mod_between, habitat_var) %>%
     mutate(ring = ID, season = NA, season_type = "Between seasons")
   
-  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between) %>% mutate(env = env_vars[i])
+  rnd_eff.all <- rbind(rnd_eff.within, rnd_eff.between) %>% mutate(env = env_vars.pref[i])
   
   rnd_effs.list[[i]] <- rnd_eff.all
   
@@ -1924,7 +1025,7 @@ for (i in 1:2) {
       theme(legend.position = "none") +
       labs(y = "Probability of use")
   
-  assign(paste0("bbal_ker_", env_vars[i], "_pred_plot"), pred_plot)
+  assign(paste0("bbal_ker_", env_vars.pref[i], "_pred_plot"), pred_plot)
   
 }
 
@@ -2003,17 +1104,25 @@ save(rnd_effs.out, file = "Data_outputs/bbal_ker_habitat_selection.RData")
 
 bbal_ker_pref_plot <- ggarrange(
   bbal_ker_bathy_pred_plot +
-    ylim(0, 1) + theme(axis.title.x = element_blank()), 
+    ylim(0, 1) +
+    theme(axis.title.x = element_blank()), 
   bbal_ker_chl_pred_plot +
-    labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
+    labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
   bbal_ker_sst_pred_plot +
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()), 
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()), 
   bbal_ker_bathy_condR_plot +
-    labs(x = "Bathymetry category") + ylim(0, 0.45),
+    labs(x = "Bathymetry category") + 
+    ylim(0, 1),
   bbal_ker_chl_condR_plot +
-    labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + ylim(0, 0.45) + theme(axis.title.y = element_blank()),
+    labs(x = expression("Scaled chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    ylim(0, 1) + 
+    theme(axis.title.y = element_blank()),
   bbal_ker_sst_condR_plot +
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + ylim(0, 0.45) + theme(axis.title.y = element_blank()), 
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    ylim(0, 1) + 
+    theme(axis.title.y = element_blank()), 
                     ncol = 3, nrow = 2)
 
 bbal_ker_pref_plot <- annotate_figure(bbal_ker_pref_plot, top = text_grob("BBAL Kerguelen", face = "bold", size = 14))
@@ -2026,7 +1135,6 @@ dev.off()
 
 
 ```
-
 
 # Wandering albatrosses
 
@@ -2115,143 +1223,33 @@ save(pnts_all, file = "Data_inputs/waal_birdis_habitat_data.RData")
 
 load("Data_inputs/waal_birdis_habitat_data.RData")
 
-pnts.used <- pnts_all %>% filter(used == 1)
+waal_birdis_pnts_all <- prep_used_data(pnts_all, "1 hours")
 
-## Remove birds with only one trip
-pnts.used %<>%
-  group_by(ID_season) %>%
-  mutate(n_trips = n_distinct(tripID)) %>%
-  filter(n_trips > 1) %>%
-  select(-n_trips)
+my_mod <- "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID_season) "
 
-## Thin to every 3 hours to reduce autocorrelation
-pnts.thinned <- pnts.used %>%
-  # group_by(tripID, date_hourly) %>%
-  # slice(1) %>%
-  mutate(time_3h = floor_date(date_hourly, "3 hours")) %>%
-  group_by(tripID, time_3h) %>%
-  slice(1) %>%
-  ungroup() %>%
-  arrange(tripID, date_hourly)
-
-## Set loop parameters
-env_vars <- c("bathy", "chlA", "SST")
-rpt_df <- data.frame(env_var = character(), rpt_within = numeric(), rpt_across = numeric())
-var.list <- list()
-ranef.list <- list()
-
-for (i in 1:length(env_vars)) {
-  
-  print(paste0("Processing ", env_vars[i]))
-  
-  # Fit the linear mixed model
-  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1 | tripID) + (1| season) + (1 | ID_season)")), data = pnts.thinned)
-
-  # Bootstrap 95% CIs
-  set.seed(123)
-
-  boot <- bootMer(mod, FUN = repeat_func_waBI, nsim = my_nsim, .progress = "txt")
-  rpt_CI <- apply(boot$t, 2, function(x) quantile(x, c(0.025, 0.975)))
-
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>% 
-    separate(level, into = c("ring", "season", "trip")) %>%
-    mutate(env = env_vars[i])
-  
-  ranef.list[[i]] <- ring_ranefs
-  
-  # Calculate repeatability
-  var_components <- as.data.frame(VarCorr(mod))
-  var_within <- var_components[var_components$grp == "ID_season", "vcov"]
-  var_total <- sum(var_components$vcov)
-  
-  ## Calculate repeatability
-  rpt_within <- var_within / var_total 
-  
-  # Outputs
-  var_df <- var_components %>%
-     select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
-     mutate(across(where(is.numeric), ~ round(.x, 3)),
-            Environment = env_vars[i],
-            rpt_within = rpt_within,
-            rpt_across = NA,
-            LCL_within = rpt_CI[1,1],
-            UCL_within = rpt_CI[2,1],
-            LCL_across = NA,
-            UCL_across = NA) %>%
-     rename(Effect = grp, Variance = variance, "Std. dev" = std_dev) %>%
-     select(-name) %>%
-    relocate(Environment, .before = Effect)
-
-  var.list[[i]] <- var_df
-  
-}
-
-waal_birdis_var_used <- do.call("rbind", var.list)
-waal_birdis_ranefs_used <- do.call("rbind", ranef.list)
+waal_birdis_vars <- model_habitat_use(waal_birdis_pnts_all, env_vars.used, "WAAL", "Bird Island", n_sim, my_mod)
+waal_birdis_var_used <- waal_birdis_vars$variance
+waal_birdis_ranefs_used <- waal_birdis_vars$ranef
 
 save(waal_birdis_var_used, file = "Data_outputs/waal_birdis_habitat_used_variances.RData")
 save(waal_birdis_ranefs_used, file = "Data_outputs/waal_birdis_habitat_used_ranef.RData")
 
 ```
 
-#### Plot 'used' repeatability
+#### Plot habitat use
 
-```{r waal_birdis_used_rpt}
-
-load("Data_outputs/waal_birdis_habitat_used_variances.RData")
-
-# Wrangle the data into long form
-waal_birdis_var_used.long <- waal_birdis_var_used %>%
-      pivot_longer(cols = matches("_(within|across)$"),
-                   names_to = c(".value", "group"),
-                   names_pattern = "(.*)_(within|across)") %>%
-  select(-c(Effect, Variance, `Std. dev`)) %>%
-  distinct()
-
-# Change factors
-waal_birdis_var_used.long %<>%
- mutate(Environment = recode(Environment,
-      "bathy" = "Bathymetry",
-      "chlA" = "Chlorophyll",
-      "SST" = "SST")) %>%
-  arrange(Environment) %>%
-  mutate(Environment = factor(Environment, levels = rev(unique(Environment))))
-
-ggplot(waal_birdis_var_used.long, aes(x = rpt, y = Environment, colour = group)) +
-  geom_point(position = position_dodge(width = 0.4), size = 3) +
-  geom_errorbarh(aes(xmin = LCL, xmax = UCL),
-                height = 0.3,
-                position = position_dodge(width = 0.4)) +
-  labs(y = "", colour = "", x = "Repeatability (95% CI)") +
-  scale_colour_manual(
-    values = c(col_between, col_within),
-    labels = c("Across season", "Within seasons") ) +
-  theme_bw() +
-  theme(legend.position = "none")
-
-```
-
-#### Plot random intercepts
-
-```{r waal_birdis_habitat_used_ranef, fig.dim = c(10,5)}
+```{r waal_birdis_plot_habitat_used, fig.dim = c(10,5)}
 
 load("Data_outputs/waal_birdis_habitat_used_ranef.RData")
 
-ranefs.df %<>%
- mutate(env = case_when(
-  env == "bathy" ~ "Bathymetry (m below sea level)",
-  env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
-  env == "SST"   ~ "SST (°C)" ))
+waal_birdis_ranefs_used %<>%
+  filter(group %in% c("ID", "ID_season")) %>%
+  mutate(env = case_when(
+    env == "bathy" ~ "Bathymetry (m below sea level)",
+    env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
+    env == "SST"   ~ "SST (°C)" )) 
 
-env_colours <- c(
-  "Bathymetry (m below sea level)" = bathy_col,
-  "Chlorophyll (mg Chl m^-3)" = chl_col,
-  "SST (°C)" = sst_col)
-
-
-split_df <- ranefs.df %>% group_by(env) %>% group_split()
+split_df <- waal_birdis_ranefs_used  %>% group_by(env) %>% group_split()
 
 lapply(split_df, make_plot)
 plots <- lapply(split_df, make_plot)
@@ -2262,20 +1260,14 @@ chl_ranef.plot <- plots[[2]] +
 sst_ranef.plot <- plots[[3]] + 
   theme(axis.title.y = element_blank())
 
-waal_birdis_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
-          ncol = 3)
+waal_birdis_used_plot <- ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot, ncol = 3)
 waal_birdis_used_plot <- annotate_figure(waal_birdis_used_plot, top = text_grob("WAAL Bird Island", face = "bold", size = 14))
 save(waal_birdis_used_plot, file = "Data_outputs/waal_birdis_used_plot.RData")
 
-png(filename = "Figures//waal_birdis_habitat_used_ranef_plot.png", width = 14, height = 6, units = "in", res = 600)
-ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+png(filename = "Figures/waal_birdis_habitat_used_ranef_plot.png", width = 14, height = 5, units = "in", res = 600)
+ ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
 dev.off()
-
-
-load("Data_outputs/waal_birdis_habitat_used_variances.RData")
-
-head(waal_birdis_var_used)
 
 ```
 
@@ -2343,170 +1335,60 @@ rm(waal_birdis_glmm.within_sst); gc()
 
 ```
 
-
 #### Conditional repeatability
 
 ```{r waal_birdis_conditional_repeatability}
 
+# [ 1 ] Calculate conditional repeatability ----
+
 load("Data_inputs/waal_birdis_habitat_data.RData")
 
-env_vars = c("bathy", "chl", "sst")
+## Store envronmental variables
+bathy_scaled <- unlist(pnts_all$bathy_scaled)
+chl_scaled <- unlist(pnts_all$chl_scaled)
+sst_scaled <- unlist(pnts_all$sst_scaled)
 
-# [ 1 ] Calculate conditional repeatability ------
-
-## Decide on simulation number
-n_sim <- 100
+var_map <- list(bathy = bathy_scaled, chl = chl_scaled, sst = sst_scaled )
 
 ## Approximate degrees of freedom for uncertainty estimates:
 df_ID <- length(unique(pnts_all$ID)) - 1
 df_ID_season <- length(unique(pnts_all$ID_season)) - 1
 df_tripID <- length(unique(pnts_all$tripID)) - 1
 
-## Store envronmental variables
-bathy_scaled <- unlist(pnts_all$bathy_scaled)
-chl_scaled <- unlist(pnts_all$chl_scaled_log)
-sst_scaled <- unlist(pnts_all$sst_scaled)
+cond_res.list <- vector(mode = "list", length = length(env_vars.pref))
 
-var_map <- list(
-  bathy = bathy_scaled,
-  chl = chl_scaled,
-  sst = sst_scaled
-)
-
-cond_res.list <- vector(mode = "list", length = length(env_vars))
-
-for (i in 1:length(env_vars)) {
-
-  habitat_var = paste0(env_vars[i], "_scaled")
-  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
+for (i in 1:length(env_vars.pref)) {
   
-  # Get models
-  load(paste0("Data_outputs/waal_birdis_glmm_within_", env_vars[i], ".RData"))
+  env_current <- var_map[[env_vars.pref[i]]]
   
-  mod_within = get(paste0("waal_birdis_glmm.within_", env_vars[i]))
+  # Load models
+  load(paste0("Data_outputs/waal_birdis_glmm_within_", env_vars.pref[i], ".RData"))
+  mod_within = get(paste0("waal_birdis_glmm.within_", env_vars.pref[i]))
   
-  ## Get environmental metrics
-  env_current <- var_map[[env_vars[i]]]
+  # Estimate slope variances and conditional repeatability
+  res_within.summary <- extract_pref_metrics(mod_within, env_vars.pref[i], "within", env_current, "WAAL", "Bird Island")
   
-  ## Summarise data 
-  meanX <- mean(env_current)
-  varX <- var(env_current)
-  xrange <- range(env_current)
-  
-  # Within ====
-  
-  ## Estimate conditional repeatability ====
-
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
-    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
-  nrow = 2) 
-   
-  res_within <- condR(
-    betaX = fixef(mod_within)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,   
-    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_within.summary <- data.frame(var = res_within$Vi,
-                            R2 = res_within$R2s, 
-                            marginal_R2 = res_within$Rmar,
-                            med_rpt = median(res_within$condR$condR),
-                            LCL_rpt = quantile(res_within$condR$condR, 0.025, na.rm = TRUE),
-                            UCL_rpt = quantile(res_within$condR$condR, 0.975, na.rm = TRUE),
-                            env = env_vars[i],
-                            species = "WAAL",
-                            colony = "Bird Island", 
-                            level = "within")
-  
-  rownames(res_within.summary) <- NULL
-  
-  ## Bootstrap conditional repeatability uncertainty ####
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_within)$cond
-  vcov_beta <- vcov(mod_within)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$ID_season[1,1])         
-  var_slope <- as.numeric(vc$ID_season.1[1,1]) 
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID_season) / df_ID_season
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID_season) / df_ID_season
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "within")
-  
-  res.summary <- res_within.summary %>% 
-    relocate(c(species, colony, level, env), .before = var)
-  
+  res.summary <- res_within.summary
   cond_res.list[[i]] <- res.summary
   
+  # Boostrap uncertainty in conditional repeatability
+  condR_uncertainty.within <- bootstrap_condR(mod_within, env_vars.pref[i], "within", n_sim, env_current)
+
+  # Make the conditional repeatability plot
   condR_plot <- ggplot() +
-    geom_ribbon(data = condR_uncertainty %>% filter(level == "within"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_within, alpha = 0.4) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = col_within, size = 1) +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_within) +
+    geom_ribbon(data = condR_uncertainty.within, aes(x = x, ymin = lower, ymax = upper), fill = col_within, alpha = 0.4) +
+    
+    geom_line(data = condR_uncertainty.within, aes(x=x, y=median), col = col_within, size = 1) +
+    
+    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_within) +
+    
     labs(y = "Conditional repeatability") +
     theme_bw() 
-
-  assign(paste0("waal_birdis_", env_vars[i], "_condR_plot"), condR_plot)
+  
+  assign(paste0("waal_birdis_", env_vars.pref[i], "_condR_plot"), condR_plot)
   
   rm(mod_within)
-  rm(list = paste0("waal_birdis_glmm.within_", env_vars[i]))
+  rm(list = paste0("waal_birdis_glmm.within_", env_vars.pref[i]))
   gc()
   
 }
@@ -2519,19 +1401,19 @@ save(waal_birdis_condR_results, file = "Data_outputs/waal_birdis_condR_results.R
 ```{r waal_birdis_plot_slopes}
 
 load("Data_inputs/waal_birdis_habitat_data.RData")
-env_vars = c("bathy", "chl", "sst")
+env_vars.pref = c("bathy", "chl", "sst")
 
 # [ 2 ] Plot individual slopes ---- 
 
-for (i in 1:length(env_vars)) {
+for (i in 1:length(env_vars.pref)) {
 
-  habitat_var = paste0(env_vars[i], "_scaled")
+  habitat_var = paste0(env_vars.pref[i], "_scaled")
   if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
-  load(paste0("Data_outputs/waal_birdis_glmm_within_", env_vars[i], ".RData"))
+  load(paste0("Data_outputs/waal_birdis_glmm_within_", env_vars.pref[i], ".RData"))
   
-  mod_within = get(paste0("waal_birdis_glmm.within_", env_vars[i]))
+  mod_within = get(paste0("waal_birdis_glmm.within_", env_vars.pref[i]))
   
   mod_df <- mod_within$frame %>% separate(ID_season, into = c("ID", "season"), sep = "_", remove = F) %>% filter(used == 1)
   
@@ -2572,7 +1454,7 @@ for (i in 1:length(env_vars)) {
       theme(legend.position = "none") +
       labs(y = "Probability of use")
    
-  assign(paste0("waal_birdis_", env_vars[i], "_pred_plot"), pred_plot)
+  assign(paste0("waal_birdis_", env_vars.pref[i], "_pred_plot"), pred_plot)
   
 }
 
@@ -2584,16 +1466,24 @@ for (i in 1:length(env_vars)) {
 
 waal_birdis_pref_plot <- ggarrange(
   waal_birdis_bathy_pred_plot +
-    labs(x = "Scaled bathymetry (m below sea level)") + theme(axis.title.x = element_blank()), 
+    labs(x = "Scaled bathymetry (m below sea level)") + 
+    theme(axis.title.x = element_blank()), 
   waal_birdis_chl_pred_plot + 
-    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
+    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
   waal_birdis_sst_pred_plot +
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()), 
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()), 
   waal_birdis_bathy_condR_plot +
-    labs(x = "Scaled bathymetry (m below sea level)") + ylim(0, 0.15),
-  waal_birdis_chl_condR_plot + labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + ylim(0, 0.15) + theme(axis.title.y = element_blank()),
+    labs(x = "Scaled bathymetry (m below sea level)") + 
+    ylim(0, 1),
+  waal_birdis_chl_condR_plot + labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) +
+    ylim(0, 1) + 
+    theme(axis.title.y = element_blank()),
   waal_birdis_sst_condR_plot + 
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + ylim(0, 0.15) + theme(axis.title.y = element_blank()), 
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    ylim(0, 1) + 
+    theme(axis.title.y = element_blank()), 
                          ncol = 3, nrow = 2)
 
 waal_birdis_pref_plot <- annotate_figure(waal_birdis_pref_plot, top = text_grob("WAAL Bird Island", face = "bold", size = 14))
@@ -2614,263 +1504,86 @@ dev.off()
 
 ```{r waal_birdis_heritability_used }
 
-# (1) Load the data ----
+# Load & prep data ====
 load("Data_outputs/waal_birdis_habitat_used_ranef.RData")
+waal_birdis_pedigree.df <- read.csv("Data_inputs/waal_birdis_pedigree.csv") %>% select(-Year)
 
-ranefs.df_wide <- waal_birdis_ranefs_used %>%
-  select(c(ring, season, trip, estimate, std.error, env)) %>%
-  pivot_wider(names_from = env, 
-              values_from = c(estimate, std.error),
-               names_glue = "{env}_{.value}")
-
-pedigree.df <- read.csv("Data_inputs/waal_birdis_pedigree.csv")
-pedigree.df %<>% dplyr::select(-Year)
-
-pedigree.df$dam <- as.character(pedigree.df$dam)
-pedigree.df$sire <- as.character(pedigree.df$sire)
-
-# (2) Make the pedigree ----
-
-Amat <- make_Amat(ranefs.df_wide, pedigree.df)
-
-# (3) Fit univariate models covering responses to each environment ----
-
-ranefs.df_wide %<>% mutate(ring_pe = ring, animal = ring)
-
-priors_animal <- c(
-  prior(normal(0, 1), class = "Intercept"),
-  prior(student_t(3,0,1), class = "sd", group = "ring_pe"), 
-  prior(exponential(1), class = "sd", group = "animal"),
-  prior(student_t(3, 0, 1), class = "sigma"))
-
-# Build univariate models
-waal_birdis_brm.heritability_used_bathy <- brm(
-  bathy_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(waal_birdis_brm.heritability_used_bathy, file = "Data_outputs/waal_birdis_heritability_used_bathy.RData")
-
-waal_birdis_brm.heritability_used_chl <- brm(
-  chlA_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(waal_birdis_brm.heritability_used_chl, file = "Data_outputs/waal_birdis_heritability_used_chl.RData")
-
-waal_birdis_brm.heritability_used_sst <- brm(
-  SST_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(waal_birdis_brm.heritability_used_sst, file = "Data_outputs/waal_birdis_heritability_used_sst.RData")
+data_prep <- prep_used_heritability_data(waal_birdis_ranefs_used, waal_birdis_pedigree.df)
+waal_birdis_used_h2.df <- data_prep$data
+waal_birdis_used_h2.Amat <- data_prep$Amat
 
 
-# Estimate heritability
-h2_bathy <- get_h2(waal_birdis_brm.heritability_used_bathy)
-h2_chl <- get_h2(waal_birdis_brm.heritability_used_chl)
-h2_sst <- get_h2(waal_birdis_brm.heritability_used_sst)
+# Fit models ====
+models_list <- lapply(env_vars.used, function(e) {
+  fit_habitat_heritability_model("estimate", e, waal_birdis_used_h2.df, waal_birdis_used_h2.Amat, priors_animal, "Data_outputs/waal_birdis_")
+})
+names(models_list) <- env_vars.used
 
-posteriors <- data.frame(cbind(h2_bathy, h2_chl, h2_sst))
-posteriors %<>% 
-  pivot_longer(cols = starts_with("h2"),
-               names_to = "env",
-               values_to = "h2") %>%
+
+# Extract h2 ==== 
+waal_birdis_h2_used.posteriors <- purrr::map_df(models_list, ~ {
+  data.frame(h2 = get_h2(.x))
+}, .id = "env") %>%
   mutate(env = recode(env,
-      "h2_bathy" = "Bathymetry",
-      "h2_chl" = "Chlorophyll",
-      "h2_sst" = "SST")) %>%
-  arrange(env) %>%
-  mutate(env = factor(env, levels = rev(unique(env))))
+      "bathy" = "Bathymetry",
+      "chlA"   = "Chlorophyll",
+      "SST"   = "SST")) %>%
+  mutate(env = factor(env, levels = c("SST", "Chlorophyll", "Bathymetry"))) 
 
-ggplot(posteriors, aes(x = h2, y = env)) +
-  geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
-  labs(x = "Additive genetic heritability (h²)", y = "") +
-  theme_bw()
+rownames(waal_birdis_h2_used.posteriors) <- NULL
 
-save(posteriors, file = "Data_outputs/waal_birdis_habitat_used_heritability_posteriors.RData")
-
+save(waal_birdis_h2_used.posteriors, file = "Data_outputs/waal_birdis_habitat_used_h2_posteriors.RData")
 
 ```
 
 #### Habitat preference
 
-##### Extract slopes
+```{r waal_birdis_heritability_pref }
 
-```{r waal_birdis_extract_slopes}
+# Extract slopes ====
 
 load("Data_inputs/waal_birdis_habitat_data.RData")
-
-## Store envronmental variables
-env_vars = c("bathy", "chl", "sst")
-
-## Get meta to recover later
 pnts_meta <- pnts_all %>% select(c(tripID, phase)) %>% distinct()
 
-slopes.list <- vector(mode = "list", length = length(env_vars))
-
-for (i in 1:length(env_vars)) {
-
-  habitat_var = paste0(env_vars[i], "_scaled")
-  
-  # Get models
-  load(paste0("Data_outputs/waal_birdis_glmm_within_", env_vars[i], ".RData"))
-  my_mod = get(paste0("waal_birdis_glmm.within_", env_vars[i]))
-  
-  # Extract slopes - mean and SE
-  slopes <- ranef(my_mod)$cond$tripID
-  
-  slopes_df <- data.frame(
-        ID = rownames(slopes),
-        slope = slopes[,2])
-
-  slopes_df %<>% 
-    left_join(pnts_meta %>% rename(ID = tripID), by = "ID") %>%
-    separate(ID, into = c("ring", "season", "tripID"), remove = FALSE) %>%
-    mutate(env = env_vars[i]) %>% 
-    relocate(c(ring, season, tripID))
-
-  slopes.list[[i]] <- slopes_df
-  
-}
-
-waal_birdis_habitat_slopes <- do.call("rbind", slopes.list)
+waal_birdis_habitat_slopes <- extract_habitat_slopes(env_vars.pref, "waal_birdis", pnts_meta)
 save(waal_birdis_habitat_slopes, file = "Data_outputs/waal_birdis_habitat_slopes.RData")
 
 
-```
+# Estimate heritability ===
 
-##### Estimate heritability
+## Prep the data
+waal_birdis_pedigree.df <- read.csv("Data_inputs/waal_birdis_pedigree.csv") %>% dplyr::select(-Year)
 
-Try and run each model separately
+# Fix birds that are recorded as both dams and sires
+waal_birdis_pedigree.df$sire[waal_birdis_pedigree.df$id == "1271009"] <- "1318880"
+waal_birdis_pedigree.df$dam[waal_birdis_pedigree.df$id == "1271009"] <- "1318939"
 
-```{r waal_birdis_heritability_pref }
-
-# (1) Load the data ----
-load("Data_outputs/waal_birdis_habitat_slopes.RData")
-
-pedigree.df <- read.csv("Data_inputs/waal_birdis_pedigree.csv")
-pedigree.df %<>% dplyr::select(-Year)
-
-pedigree.df$dam <- as.character(pedigree.df$dam)
-pedigree.df$sire <- as.character(pedigree.df$sire)
-
-# (2) Make the pedigree ----
-
-Amat <- make_Amat(waal_birdis_habitat_slopes, pedigree.df)
-
-## Optional - visualise the pruned peigree (go into function to get pruned pedigree)
-
-# edges <- pedigree.pruned %>%
-#   tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
-#   dplyr::select(from = value, to = id)
-# 
-# ped_graph <- graph_from_data_frame(edges, directed = TRUE)
-# 
-# plot(ped_graph,
-#      vertex.size = 3,
-#      vertex.label = NA,
-#      edge.arrow.size = 0.2,
-#      layout = layout_with_sugiyama(ped_graph)$layout)
+data_prep <- prep_slope_heritability_data(waal_birdis_habitat_slopes, waal_birdis_pedigree.df)
+waal_birdis_pref_h2.df <- data_prep$data
+waal_birdis_pref_h2.Amat <- data_prep$Amat
 
 
-## Optional - visualise sparse matrix
+# Fit models ====
 
-# A_sparse <- as(Amat, "dgCMatrix")
-# summary(A_sparse)
-#
-### Check how many non-zero off-diagonal elements
-# nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
-# density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
-# cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
-# 
-# pheatmap(as.matrix(Amat), show_rownames = FALSE, show_colnames = FALSE)
+models_list <- lapply(env_vars.pref, function(e) {
+  fit_habitat_heritability_model("slope", e, waal_birdis_pref_h2.df, waal_birdis_pref_h2.Amat, priors_animal, "Data_outputs/waal_birdis_")
+})
+names(models_list) <- env_vars.pref
 
 
-# (3) Fit multivariate model covering responses to each environment ----
-waal_birdis_habitat_slopes %<>%
-  mutate(animal = ring, 
-         tripID = ID, 
-         ring_pe = ring)
-
-## Make dataframe wide (i.e. slope per environment)
-waal_birdis_slopes.wide <- waal_birdis_habitat_slopes %>%
-  pivot_wider(names_from = env, 
-              values_from = slope,
-              names_glue = "{env}_slope")
-
-## Only retain birds with > 1 trip
-waal_birdis_slopes.wide %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% ungroup() %>% select(-n_trips)
-
-# Build univariate models and extract h2
-waal_birdis_brm.heritability_bathy <- brm(
-  bathy_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = waal_birdis_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_bathy <- (VarCorr(waal_birdis_brm.heritability_bathy, summary = FALSE)$animal$sd)^2
-v_r_bathy <- (VarCorr(waal_birdis_brm.heritability_bathy, summary = FALSE)$residual$sd)^2
-h2_bathy <- as.mcmc(v_animal_bathy / (v_animal_bathy + v_r_bathy) )
-
-save(waal_birdis_brm.heritability_bathy, file = "Data_outputs/waal_birdis_habitat_pref_heritability_bathy.RData")
-
-
-waal_birdis_brm.heritability_chl <- brm(
-  chl_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = waal_birdis_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_chl <- (VarCorr(waal_birdis_brm.heritability_chl, summary = FALSE)$animal$sd)^2
-v_r_chl <- (VarCorr(waal_birdis_brm.heritability_chl, summary = FALSE)$residual$sd)^2
-h2_chl <- as.mcmc(v_animal_chl / (v_animal_chl + v_r_chl) )
-
-save(waal_birdis_brm.heritability_chl, file = "Data_outputs/waal_birdis_habitat_pref_heritability_chl.RData")
-
-
-waal_birdis_brm.heritability_sst <- brm(
-  sst_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = waal_birdis_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_sst <- (VarCorr(waal_birdis_brm.heritability_sst, summary = FALSE)$animal$sd)^2
-v_r_sst <- (VarCorr(waal_birdis_brm.heritability_sst, summary = FALSE)$residual$sd)^2
-h2_sst <- as.mcmc(v_animal_sst / (v_animal_sst + v_r_sst) )
-
-save(waal_birdis_brm.heritability_sst, file = "Data_outputs/waal_birdis_habitat_pref_heritability_sst.RData")
-
-
-posteriors <- data.frame(cbind(h2_bathy, h2_chl, h2_sst))
-colnames(posteriors) <- c("h2_bathy", "h2_chl", "h2_sst")
-posteriors %<>% 
-  pivot_longer(cols = starts_with("h2"),
-               names_to = "env",
-               values_to = "h2") %>%
+# Extract h2 ==== 
+waal_birdis_h2_slope.posteriors <- purrr::map_df(models_list, ~ {
+  data.frame(h2 = get_h2(.x))
+}, .id = "env") %>%
   mutate(env = recode(env,
-      "h2_bathy" = "Bathymetry",
-      "h2_chl" = "Chlorophyll",
-      "h2_sst" = "SST")) %>%
-  arrange(env) %>%
-  mutate(env = factor(env, levels = rev(unique(env))))
+      "bathy" = "Bathymetry",
+      "chl"   = "Chlorophyll",
+      "sst"   = "SST")) %>%
+  mutate(env = factor(env, levels = c("SST", "Chlorophyll", "Bathymetry"))) 
 
-save(posteriors, file = "Data_outputs/waal_birdis_habitat_pref_heritability_posteriors.RData")
+rownames(waal_birdis_h2_slope.posteriors) <- NULL
+
+save(waal_birdis_h2_slope.posteriors, file = "Data_outputs/waal_birdis_habitat_pref_h2_posteriors.RData")
 
 ggplot(posteriors, aes(x = h2, y = env)) +
   geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
@@ -2882,7 +1595,7 @@ ggplot(posteriors, aes(x = h2, y = env)) +
 ## Crozet
 
 Chlorophyll values are heavily skewed, with extremely high
-concentrations occurring near coastlines in the ‘available’ dataset. To
+concentrations occurring near coastlines in the 'available' dataset. To
 prevent these large outliers from unduly influencing the model results,
 I apply a log-transformation to chlorophyll.
 
@@ -2973,109 +1686,33 @@ save(pnts_all, file = "Data_inputs/waal_cro_habitat_data.RData")
 
 load("Data_inputs/waal_cro_habitat_data.RData")
 
-pnts.used <- pnts_all %>% filter(used == 1)
+waal_cro_pnts_all <- prep_used_data(pnts_all, "1 hours")
 
-## Remove birds with only one trip
-pnts.used %<>%
-  group_by(ID_season) %>%
-  mutate(n_trips = n_distinct(tripID)) %>%
-  filter(n_trips > 1) %>%
-  select(-n_trips)
+my_mod <- "~ dist_col + phase + (1| season) + (1 | tripID) + (1 | ID) + (1 | ID_season) "
 
-## Thin to every 3 hours to reduce autocorrelation
-pnts.thinned <- pnts.used %>%
-  # group_by(tripID, date_hourly) %>%
-  # slice(1) %>%
-  mutate(time_3h = floor_date(date_hourly, "3 hours")) %>%
-  group_by(tripID, time_3h) %>%
-  slice(1) %>%
-  ungroup() %>%
-  arrange(tripID, date_hourly)
-
-## Set loop parameters
-env_vars <- c("bathy", "chlA", "SST")
-rpt_df <- data.frame(env_var = character(), rpt_within = numeric(), rpt_across = numeric())
-var.list <- list()
-ranef.list <- list()
-
-for (i in 1:length(env_vars)) {
-  
-  print(paste0("Processing ", env_vars[i], "..."))
-  
-  # Fit the linear mixed model
-  mod <- lmer(as.formula(paste(env_vars[i], "~ dist_col + phase + (1 | season) + (1 | tripID) + (1 | ID) + (1 | ID_season)")), data = pnts.thinned)
-  
-  ## Bootstrap 95% CIs
-  set.seed(123)
-  boot <- bootMer(mod, FUN = repeat_func, nsim = my_nsim, .progress = "txt")
-  rpt_CI <- apply(boot$t, 2, function(x) quantile(x, c(0.025, 0.975)))
-
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ## Extract random intercepts
-  ranefs <- broom.mixed::tidy(mod, effects = "ran_vals", conf.int = TRUE)
-  ring_ranefs <- ranefs[ranefs$group == "tripID", ] %>%
-    separate(level, into = c("ring", "season", "trip")) %>%
-    mutate(env = env_vars[i])
-
-  ranef.list[[i]] <- ring_ranefs
-  
-  # Calculate repeatability
-  var_components <- as.data.frame(VarCorr(mod))
-  var_across <- var_components[var_components$grp == "ID", "vcov"]
-  var_within <- var_components[var_components$grp == "ID_season", "vcov"] + var_across
-  var_total <- sum(var_components$vcov)
-  
-  ## Calculate repeatability
-  rpt_within <- var_within / var_total 
-  rpt_across <- var_across / var_total 
-
-  # Outputs
-  var_df <- var_components %>%
-     select(grp = grp, name = var1, variance = vcov, std_dev = sdcor) %>%
-     mutate(across(where(is.numeric), ~ round(.x, 3)),
-            Environment = env_vars[i],
-            rpt_within = rpt_within,
-            rpt_across = rpt_across,
-            LCL_within = rpt_CI[1,1],
-            UCL_within = rpt_CI[2,1],
-            LCL_across = rpt_CI[1,2],
-            UCL_across = rpt_CI[2,2]) %>%
-     rename(Effect = grp, Variance = variance, "Std. dev" = std_dev) %>%
-     select(-name) %>%
-    relocate(Environment, .before = Effect)
-
-  var.list[[i]] <- var_df
-  
-}
-
-waal_cro_var_used <- do.call("rbind", var.list)
-waal_cro_ranefs_used <- do.call("rbind", ranef.list)
+waal_cro_vars <- model_habitat_use(waal_cro_pnts_all, env_vars.used, "WAAL", "Crozet", n_sim, my_mod)
+waal_cro_var_used <- waal_cro_vars$variance
+waal_cro_ranefs_used <- waal_cro_vars$ranef
 
 save(waal_cro_var_used, file = "Data_outputs/waal_cro_habitat_used_variances.RData")
 save(waal_cro_ranefs_used, file = "Data_outputs/waal_cro_habitat_used_ranef.RData")
 
 ```
 
-#### Plot random intercepts
+#### Plot habitat use
 
-```{r waal_cro_plot_habitat_used, fig.dim = c(10,5)}
+```{r waal_birdis_plot_habitat_used, fig.dim = c(10,5)}
 
 load("Data_outputs/waal_cro_habitat_used_ranef.RData")
 
-ranefs.df %<>%
- mutate(env = case_when(
-  env == "bathy" ~ "Bathymetry (m below sea level)",
-  env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
-  env == "SST"   ~ "SST (°C)" ))
+waal_cro_ranefs_used %<>%
+  filter(group %in% c("ID", "ID_season")) %>%
+  mutate(env = case_when(
+    env == "bathy" ~ "Bathymetry (m below sea level)",
+    env == "chlA"  ~ "Chlorophyll (mg Chl m^-3)",
+    env == "SST"   ~ "SST (°C)" )) 
 
-env_colours <- c(
-  "Bathymetry (m below sea level)" = bathy_col,
-  "Chlorophyll (mg Chl m^-3)" = chl_col,
-  "SST (°C)" = sst_col)
-
-
-split_df <- ranefs.df %>% group_by(env) %>% group_split()
+split_df <- waal_cro_ranefs_used  %>% group_by(env) %>% group_split()
 
 lapply(split_df, make_plot)
 plots <- lapply(split_df, make_plot)
@@ -3091,34 +1728,9 @@ waal_cro_used_plot <- annotate_figure(waal_cro_used_plot, top = text_grob("WAAL 
 save(waal_cro_used_plot, file = "Data_outputs/waal_cro_used_plot.RData")
 
 png(filename = "Figures/waal_cro_habitat_used_ranef_plot.png", width = 14, height = 5, units = "in", res = 600)
-ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
+ ggarrange(bathy_ranef.plot, chl_ranef.plot, sst_ranef.plot,
           ncol = 3)
 dev.off()
-
-
-```
-
-```{r waal_cro_table_variance_habitat_used}
-
-load("Data_outputs/waal_cro_habitat_used_variances.RData")
-
-var.table <- var.df_all %>%
-  mutate(Environment = case_when(
-    Environment == "bathy" ~ "Bathymetry",
-    Environment == "chlA" ~ "Chlorphyll-a",
-    TRUE ~ "SST" )) %>%
-  mutate(across(3:6, ~ round(.x, 2))) %>%
-  rename("Within-season rpt" = rpt_within,
-         "Across season rpt" = rpt_across)
-
-# Add whitespace to avoid collapsing bathymetry & chlorophyll together
-var.table$`Across season rpt`[6:10] <- paste0(var.table$`Across season rpt`[6:10], ".00")
-
-kable(var.table, format = "html", 
-  caption = 'Table X. Variances and repeatability associated with random intercepts from the habitat used model.') %>%
-  row_spec(c(6,11), extra_css = "border-top: 1px dotted;") %>%
-  collapse_rows(columns = c(1, 5, 6)) %>%
-  kable_classic(font_size = 12)
 
 ```
 
@@ -3223,276 +1835,71 @@ rm(waal_cro_glmm.between_sst); gc()
 
 ```
 
-
 #### Conditional repeatability
 
 ```{r waal_cro_conditional_repeatability}
 
+# [ 1 ] Calculate conditional repeatability ----
+
 load("Data_inputs/waal_cro_habitat_data.RData")
 
-env_vars = c("bathy", "chl", "sst")
+## Store envronmental variables
+bathy_scaled <- unlist(pnts_all$bathy_scaled)
+chl_scaled <- unlist(pnts_all$chl_scaled)
+sst_scaled <- unlist(pnts_all$sst_scaled)
 
-# [ 1 ] Calculate conditional repeatability ------
-
-## Decide on simulation number
-n_sim <- 100
+var_map <- list(bathy = bathy_scaled, chl = chl_scaled, sst = sst_scaled )
 
 ## Approximate degrees of freedom for uncertainty estimates:
 df_ID <- length(unique(pnts_all$ID)) - 1
 df_ID_season <- length(unique(pnts_all$ID_season)) - 1
 df_tripID <- length(unique(pnts_all$tripID)) - 1
 
-## Store envronmental variables
-bathy_scaled <- unlist(pnts_all$bathy_scaled)
-chl_scaled <- unlist(pnts_all$chl_scaled_log)
-sst_scaled <- unlist(pnts_all$sst_scaled)
+cond_res.list <- vector(mode = "list", length = length(env_vars.pref))
 
-var_map <- list(
-  bathy = bathy_scaled,
-  chl = chl_scaled,
-  sst = sst_scaled
-)
+for (i in 1:length(env_vars.pref)) {
+  
+  env_current <- var_map[[env_vars.pref[i]]]
+  
+  # Load models
+  load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars.pref[i], ".RData"))
+  load(paste0("Data_outputs/waal_cro_glmm_between_", env_vars.pref[i], ".RData"))
 
-cond_res.list <- vector(mode = "list", length = length(env_vars))
-
-for (i in 1:length(env_vars)) {
-
-  habitat_var = paste0(env_vars[i], "_scaled")
-  if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
+  mod_within = get(paste0("waal_cro_glmm.within_", env_vars.pref[i]))
+  mod_between = get(paste0("waal_cro_glmm.between_", env_vars.pref[i]))
   
-  # Get models
-  load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars[i], ".RData"))
-  load(paste0("Data_outputs/waal_cro_glmm_between_", env_vars[i], ".RData"))
-
-  mod_within = get(paste0("waal_cro_glmm.within_", env_vars[i]))
-  mod_between = get(paste0("waal_cro_glmm.between_", env_vars[i]))
+  # Estimate slope variances and conditional repeatability
+  res_between.summary <- extract_pref_metrics(mod_between, env_vars.pref[i], "between", env_current, "WAAL", "Crozet")
+  res_within.summary <- extract_pref_metrics(mod_within, env_vars.pref[i], "within", env_current, "WAAL", "Crozet")
   
-  ## Get environmental metrics ====
-  env_current <- var_map[[env_vars[i]]]
-  
-  ## Summarise data 
-  meanX <- mean(env_current)
-  varX <- var(env_current)
-  xrange <- range(env_current)
-  
-  # Between ==== 
-  
-  ## Estimate conditional repeatability ####
-  
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_between)$cond$ID), 0,
-    0, as.numeric(VarCorr(mod_between)$cond$ID.1)),
-  nrow = 2) 
-  
-  res_between <- condR(
-    betaX = fixef(mod_between)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,    
-    Vo =  as.numeric(VarCorr(mod_between)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_between.summary <- data.frame(var = res_between$Vi,
-                            R2 = res_between$R2s, 
-                            marginal_R2 = res_between$Rmar,
-                            med_rpt = median(res_between$condR$condR),
-                            LCL_rpt = quantile(res_between$condR$condR, 0.025, na.rm = TRUE),
-                            UCL_rpt = quantile(res_between$condR$condR, 0.975, na.rm = TRUE),
-                            env = env_vars[i],
-                            species = "WAAL",
-                            colony = "Crozet", 
-                            level = "between")
-  
-  rownames(res_between.summary) <- NULL
-  
-  ## Bootstrap conditional repeatability uncertainty ####
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_between)$cond
-  vcov_beta <- vcov(mod_between)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_between)$cond
-  var_int <- as.numeric(vc$ID[1,1])         
-  var_slope <- as.numeric(vc$ID.1[1,1])     
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID) / df_ID
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID) / df_ID
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty.between <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "between")
-  
-  
-  # Within ====
-  
-  ## Estimate conditional repeatability ####
-  
-  my_sigma = matrix( c(
-    as.numeric(VarCorr(mod_within)$cond$ID_season), 0,
-    0, as.numeric(VarCorr(mod_within)$cond$ID_season.1)),
-  nrow = 2) 
-   
-  res_within <- condR(
-    betaX = fixef(mod_within)$cond[habitat_var],
-    meanX =  mean(env_current),
-    Vx = var(env_current),
-    Vr = (pi^2)/3,
-    Sigma = my_sigma,    
-    Vo =  as.numeric(VarCorr(mod_within)$cond$tripID),  
-    xrange = range(env_current)
-  )
-  
-  res_within.summary <- data.frame(var = res_within$Vi,
-                            R2 = res_within$R2s, 
-                            marginal_R2 = res_within$Rmar,
-                            med_rpt = median(res_within$condR$condR),
-                            LCL_rpt = quantile(res_within$condR$condR, 0.025, na.rm = TRUE),
-                            UCL_rpt = quantile(res_within$condR$condR, 0.975, na.rm = TRUE),
-                            env = env_vars[i],
-                            species = "WAAL",
-                            colony = "Crozet", 
-                            level = "within")
-  
-  rownames(res_within.summary) <- NULL
-  
-  ## Extract fixed effects and their covariance matrix
-  beta_hat <- fixef(mod_within)$cond
-  vcov_beta <- vcov(mod_within)
-  
-  ## Extract variance components (point estimates)
-  vc <- VarCorr(mod_within)$cond
-  var_int <- as.numeric(vc$ID_season[1,1])         
-  var_slope <- as.numeric(vc$ID_season.1[1,1])    
-  var_tripID <- as.numeric(vc$tripID[1,1]) 
-  var_resid <- (pi^2)/3                     
-  
-  ## Get covariance matrix for intercept/slope random effects
-  Sigma = matrix( c(
-    var_int, 0,
-    0, var_slope),
-    nrow = 2) 
-  
-  set.seed(123)
-  
-  condR_sim <- list()
-  
-  for(n in 1:n_sim){
-    
-    # 1. Sample fixed effects from multivariate normal
-    vcov_mat_numeric <- vcov_beta$cond
-    beta_sim <- mvrnorm(1, mu = beta_hat, Sigma = vcov_mat_numeric)
-    
-    # 2. Sample variance components from scaled chi-square approximations:
-    # (This is a rough approximation — bootstrapping is better but slower)
-    
-    var_int_sim <- var_int * rchisq(1, df = df_ID_season) / df_ID_season
-    var_slope_sim <- var_slope * rchisq(1, df = df_ID_season) / df_ID_season
-    var_tripID_sim <- var_tripID * rchisq(1, df = df_tripID) / df_tripID
-
-    
-    ## Make the covariance matrix
-    Sigma_sim = matrix( c( var_int_sim, 0,
-                           0, var_slope_sim), nrow = 2)
-    
-    # 3. Compute conditional repeatability
-    condR_df <- condR(
-      betaX = beta_sim[habitat_var], 
-      meanX = meanX,
-      Vx = varX,
-      Vr = var_resid,
-      Sigma = Sigma_sim, 
-      Vo = var_tripID_sim,
-      xrange = xrange)$condR
-    
-    condR_sim[[n]] <- condR_df %>% mutate(sim = n)
-    
-  }
-  
-  ## Summarise output
-  condR_all <- bind_rows(condR_sim)
-  
-  condR_uncertainty.within <- condR_all %>%
-    group_by(x) %>%
-    summarise(
-      median = median(condR, na.rm = TRUE),
-      lower = quantile(condR, 0.025, na.rm = TRUE),
-      upper = quantile(condR, 0.975, na.rm = TRUE)
-    ) %>% ungroup() %>%
-    mutate(level = "within")
-  
-  condR_uncertainty <- rbind(condR_uncertainty.between, condR_uncertainty.within)
-  
-  res.summary <- rbind(res_within.summary, res_between.summary) %>% 
-    relocate(c(species, colony, level, env), .before = var)
-  
+  res.summary <- rbind(res_between.summary, res_within.summary)
   cond_res.list[[i]] <- res.summary
   
+  # Boostrap uncertainty in conditional repeatability
+  condR_uncertainty.between <- bootstrap_condR(mod_between, env_vars.pref[i], "between", n_sim, env_current)
+  condR_uncertainty.within <- bootstrap_condR(mod_within, env_vars.pref[i], "within", n_sim, env_current)
+
+  # Make the conditional repeatability plot
+  #xrange_90 <- quantile(env_current, probs = c(0.05, 0.95), na.rm = TRUE)
+  
   condR_plot <- ggplot() +
-    geom_ribbon(data = condR_uncertainty %>% filter(level == "between"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_between, alpha = 0.4) +
-    geom_ribbon(data = condR_uncertainty %>% filter(level == "within"), aes(x = x, ymin = lower/100, ymax = upper/100), fill = col_within, alpha = 0.4) +
-    geom_line(data = res_between$condR, aes(x=x, y=condR/100), col = col_between, size = 1) +
-    geom_line(data = res_within$condR, aes(x=x, y=condR/100), col = col_within, size = 1) +
-    geom_hline(data = res_between.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_between) +
-    geom_hline(data = res_within.summary, aes(yintercept = med_rpt/100), linetype = "dashed", col = col_within) +
+    geom_ribbon(data = condR_uncertainty.between, aes(x = x, ymin = lower, ymax = upper), fill = col_between, alpha = 0.4) +
+    geom_ribbon(data = condR_uncertainty.within, aes(x = x, ymin = lower, ymax = upper), fill = col_within, alpha = 0.4) +
+    
+    geom_line(data = condR_uncertainty.between, aes(x=x, y=median), col = col_between, size = 1) +
+    geom_line(data = condR_uncertainty.between, aes(x=x, y=median), col = col_within, size = 1) +
+    
+    geom_hline(data = res_between.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_between) +
+    geom_hline(data = res_within.summary, aes(yintercept = med_rpt), linetype = "dashed", col = col_within) +
+    
     labs(y = "Conditional repeatability") +
     theme_bw() 
-
-  assign(paste0("waal_cro_", env_vars[i], "_condR_plot"), condR_plot)
+  
+  assign(paste0("waal_cro_", env_vars.pref[i], "_condR_plot"), condR_plot)
   
   rm(mod_within, mod_between)
-  rm(list = paste0("waal_cro_glmm.within_", env_vars[i]))
-  rm(list = paste0("waal_cro_glmm.between_", env_vars[i]))
+  rm(list = paste0("waal_cro_glmm.within_", env_vars.pref[i]))
+  rm(list = paste0("waal_cro_glmm.between_", env_vars.pref[i]))
   gc()
   
 }
@@ -3504,21 +1911,21 @@ save(waal_cro_condR_results, file = "Data_outputs/waal_cro_condR_results.RData")
 
 ```{r waal_cro_plot_slopes}
 
-env_vars = c("bathy", "chl", "sst")
+env_vars.pref = c("bathy", "chl", "sst")
 
 # [ 2 ] Plot individual slopes ---- 
 
-for (i in 1:length(env_vars)) {
+for (i in 1:length(env_vars.pref)) {
 
-  habitat_var = paste0(env_vars[i], "_scaled")
+  habitat_var = paste0(env_vars.pref[i], "_scaled")
   if(grepl("chl", habitat_var)) { habitat_var = "chl_scaled_log"}
   
   # Get models
-  load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars[i], ".RData"))
-  load(paste0("Data_outputs/waal_cro_glmm_between_", env_vars[i], ".RData"))
+  load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars.pref[i], ".RData"))
+  load(paste0("Data_outputs/waal_cro_glmm_between_", env_vars.pref[i], ".RData"))
 
-  mod_within = get(paste0("waal_cro_glmm.within_", env_vars[i]))
-  mod_between = get(paste0("waal_cro_glmm.between_", env_vars[i]))
+  mod_within = get(paste0("waal_cro_glmm.within_", env_vars.pref[i]))
+  mod_between = get(paste0("waal_cro_glmm.between_", env_vars.pref[i]))
   
   mod_df <- mod_within$frame %>% separate(ID_season, into = c("ID", "season"), sep = "_", remove = F) %>% filter(used == 1)
   
@@ -3562,7 +1969,7 @@ for (i in 1:length(env_vars)) {
       theme(legend.position = "none") +
       labs(y = "Probability of use")
   
-  assign(paste0("waal_cro_", env_vars[i], "_pred_plot"), pred_plot)
+  assign(paste0("waal_cro_", env_vars.pref[i], "_pred_plot"), pred_plot)
   
 }
 
@@ -3576,15 +1983,22 @@ waal_cro_pref_plot <- ggarrange(
   waal_cro_bathy_pred_plot + 
     labs(x = "Scaled bathymetry (m below sea level)") + theme(axis.title.x = element_blank()), 
   waal_cro_chl_pred_plot +
-    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
+    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
   waal_cro_sst_pred_plot +
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    theme(axis.title.y = element_blank(), axis.title.x = element_blank()),
   waal_cro_bathy_condR_plot +
-    labs(x = "Scaled bathymetry (m below sea level)") + ylim(0, 0.1),
+    labs(x = "Scaled bathymetry (m below sea level)") + 
+    ylim(0, 1),
   waal_cro_chl_condR_plot +
-    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + ylim(0, 0.1) + theme(axis.title.y = element_blank()),
+    labs(x = expression("Scaled & logged chlorophyll concentration (" * mg ~ Chl ~ m^-3 * ")")) + 
+    ylim(0, 1) + 
+    theme(axis.title.y = element_blank()),
   waal_cro_sst_condR_plot + 
-    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + ylim(0, 0.1) + theme(axis.title.y = element_blank()), 
+    labs(x = expression("Scaled sea surface temperature (" * ~ degree ~ "C)")) + 
+    ylim(0, 1) + 
+    theme(axis.title.y = element_blank()), 
                      ncol = 3, nrow = 2)
 
 waal_cro_pref_plot <- annotate_figure(waal_cro_pref_plot, top = text_grob("WAAL Crozet", face = "bold", size = 14))
@@ -3605,262 +2019,86 @@ dev.off()
 
 ```{r waal_cro_heritability_used }
 
-# (1) Load the data ----
+# Load & prep data ====
 load("Data_outputs/waal_cro_habitat_used_ranef.RData")
+waal_cro_pedigree.df <- read.csv("Data_inputs/waal_cro_pedigree.csv") %>% select(-Year)
 
-ranefs.df_wide <- waal_cro_ranefs_used %>%
-  select(c(ring, season, trip, estimate, std.error, env)) %>%
-  pivot_wider(names_from = env, 
-              values_from = c(estimate, std.error),
-               names_glue = "{env}_{.value}")
-
-pedigree.df <- read.csv("Data_inputs/waal_cro_pedigree.csv")
-pedigree.df %<>% dplyr::select(-Year)
-
-pedigree.df$dam <- as.character(pedigree.df$dam)
-pedigree.df$sire <- as.character(pedigree.df$sire)
-
-# (2) Make the pedigree ----
-
-Amat <- make_Amat(ranefs.df_wide, pedigree.df)
-
-# (3) Fit univariate models covering responses to each environment ----
-
-ranefs.df_wide %<>% mutate(ring_pe = ring, animal = ring)
-
-priors_animal <- c(
-  prior(normal(0, 1), class = "Intercept"),
-  prior(student_t(3,0,1), class = "sd", group = "ring_pe"), 
-  prior(exponential(1), class = "sd", group = "animal"),
-  prior(student_t(3, 0, 1), class = "sigma"))
-
-# Build univariate models
-waal_cro_brm.heritability_used_bathy <- brm(
-  bathy_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(waal_cro_brm.heritability_used_bathy, file = "Data_outputs/waal_cro_heritability_used_bathy.RData")
-
-waal_cro_brm.heritability_used_chl <- brm(
-  chlA_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(waal_cro_brm.heritability_used_chl, file = "Data_outputs/waal_cro_heritability_used_chl.RData")
-
-waal_cro_brm.heritability_used_sst <- brm(
-  SST_estimate ~ 1 + (1 | ring_pe ) + (1 | gr(animal, cov = Amat)) ,
-  prior = priors_animal,
-  data = ranefs.df_wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99)) 
-
-save(waal_cro_brm.heritability_used_sst, file = "Data_outputs/waal_cro_heritability_used_sst.RData")
+data_prep <- prep_used_heritability_data(waal_cro_ranefs_used, waal_cro_pedigree.df)
+waal_cro_used_h2.df <- data_prep$data
+waal_cro_used_h2.Amat <- data_prep$Amat
 
 
-# Estimate heritability
-h2_bathy <- get_h2(waal_cro_brm.heritability_used_bathy)
-h2_chl <- get_h2(waal_cro_brm.heritability_used_chl)
-h2_sst <- get_h2(waal_cro_brm.heritability_used_sst)
+# Fit models ====
+models_list <- lapply(env_vars.used, function(e) {
+  fit_habitat_heritability_model("estimate", e, waal_cro_used_h2.df, waal_cro_used_h2.Amat, priors_animal, "Data_outputs/waal_cro_")
+})
+names(models_list) <- env_vars.used
 
-posteriors <- data.frame(cbind(h2_bathy, h2_chl, h2_sst))
-posteriors %<>% 
-  pivot_longer(cols = starts_with("h2"),
-               names_to = "env",
-               values_to = "h2") %>%
+
+# Extract h2 ==== 
+waal_cro_h2_used.posteriors <- purrr::map_df(models_list, ~ {
+  data.frame(h2 = get_h2(.x))
+}, .id = "env") %>%
   mutate(env = recode(env,
-      "h2_bathy" = "Bathymetry",
-      "h2_chl" = "Chlorophyll",
-      "h2_sst" = "SST")) %>%
-  arrange(env) %>%
-  mutate(env = factor(env, levels = rev(unique(env))))
+      "bathy" = "Bathymetry",
+      "chlA"   = "Chlorophyll",
+      "SST"   = "SST")) %>%
+  mutate(env = factor(env, levels = c("SST", "Chlorophyll", "Bathymetry"))) 
 
+rownames(waal_cro_h2_used.posteriors) <- NULL
 
-ggplot(posteriors, aes(x = h2, y = env)) +
-  geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
-  labs(x = "Additive genetic heritability (h²)", y = "") +
-  theme_bw()
-
-save(posteriors, file = "Data_outputs/waal_cro_habitat_used_heritability_posteriors.RData")
-
+save(waal_cro_h2_used.posteriors, file = "Data_outputs/waal_cro_habitat_used_h2_posteriors.RData")
 
 ```
 
 #### Habitat preference
 
+```{r waal_cro_heritability_pref }
 
-#### Extract individual slopes
-
-```{r waal_cro_extract_slopes}
+# Extract slopes ====
 
 load("Data_inputs/waal_cro_habitat_data.RData")
+pnts_meta <- pnts_all %>% select(c(tripID, phase)) %>% distinct()
 
-# Add a small constant to avoid log(0)
-pnts_all %<>% mutate(chl_scaled_log = scale(log(chlA + 0.01)) )
-
-## Store envronmental variables
-env_vars = c("sst", "bathy", "chl")
-
-slopes.list <- vector(mode = "list", length = length(env_vars))
-
-for (i in 1:length(env_vars)) {
-
-  habitat_var = paste0(env_vars[i], "_scaled")
-  
-  # Get models
-  load(paste0("Data_outputs/waal_cro_glmm_within_", env_vars[i], ".RData"))
-  my_mod = get(paste0("waal_cro_glmm.within_", env_vars[i]))
-  
-  # Extract slopes - mean and SE
-  slopes <- ranef(my_mod)$cond$ID_season
-  
-  slopes_df <- data.frame(
-        ID = rownames(slopes),
-        slope = slopes[,2])
-
-  slopes_df %<>% 
-    separate(ID, into = c("ring", "season"), remove = FALSE) %>%
-    mutate(env = env_vars[i]) %>% 
-    relocate(c(ring, season))
-
-  slopes.list[[i]] <- slopes_df
-  
-}
-
-waal_cro_habitat_slopes <- do.call("rbind", slopes.list)
+waal_cro_habitat_slopes <- extract_habitat_slopes(env_vars.pref, "waal_cro", pnts_meta)
 save(waal_cro_habitat_slopes, file = "Data_outputs/waal_cro_habitat_slopes.RData")
 
-```
 
-#### Estimate heritability
+# Estimate heritability ===
 
-```{r waal_cro_heritability }
+## Prep the data
+waal_cro_pedigree.df <- read.csv("Data_inputs/waal_cro_pedigree.csv") %>% dplyr::select(-Year)
 
-# (1) Load the data ----
-load("Data_outputs/waal_cro_habitat_slopes.RData")
+# Fix birds that are recorded as both dams and sires
+waal_cro_pedigree.df$sire[waal_cro_pedigree.df$id == "1271009"] <- "1318880"
+waal_cro_pedigree.df$dam[waal_cro_pedigree.df$id == "1271009"] <- "1318939"
 
-pedigree.df <- read.csv("Data_inputs/waal_cro_pedigree.csv")
-pedigree.df %<>% dplyr::select(-Year)
-
-pedigree.df$dam <- as.character(pedigree.df$dam)
-pedigree.df$sire <- as.character(pedigree.df$sire)
-
-# (2) Make the pedigree ----
-
-Amat <- make_Amat(waal_cro_habitat_slopes, pedigree.df)
-
-## Optional - visualise the pruned peigree (go into function to get pruned pedigree)
-
-# edges <- pedigree.pruned %>%
-#   tidyr::pivot_longer(cols = c("sire", "dam"), values_drop_na = TRUE) %>%
-#   dplyr::select(from = value, to = id)
-# 
-# ped_graph <- graph_from_data_frame(edges, directed = TRUE)
-# 
-# plot(ped_graph,
-#      vertex.size = 3,
-#      vertex.label = NA,
-#      edge.arrow.size = 0.2,
-#      layout = layout_with_sugiyama(ped_graph)$layout)
+data_prep <- prep_slope_heritability_data(waal_cro_habitat_slopes, waal_cro_pedigree.df)
+waal_cro_pref_h2.df <- data_prep$data
+waal_cro_pref_h2.Amat <- data_prep$Amat
 
 
-## Optional - visualise sparse matrix
+# Fit models ====
 
-A_sparse <- as(Amat, "dgCMatrix")
-summary(A_sparse)
-
-### Check how many non-zero off-diagonal elements
-# nnzero_offdiag <- sum(A_sparse != 0) - nrow(A_sparse)
-# density_offdiag <- nnzero_offdiag / (nrow(A_sparse)^2 - nrow(A_sparse))
-# cat("Off-diagonal density:", round(density_offdiag * 100, 4), "%\n")
-# 
-# pheatmap(as.matrix(Amat), show_rownames = FALSE, show_colnames = FALSE)
+models_list <- lapply(env_vars.pref, function(e) {
+  fit_habitat_heritability_model("slope", e, waal_cro_pref_h2.df, waal_cro_pref_h2.Amat, priors_animal, "Data_outputs/waal_cro_")
+})
+names(models_list) <- env_vars.pref
 
 
-# (3) Fit heritability models ----
-waal_cro_habitat_slopes %<>%
-  mutate(animal = ring, 
-         ring_pe = ring)
-
-## Make dataframe wide (i.e. slope per environment)
-waal_cro_slopes.wide <- waal_cro_habitat_slopes %>%
-  pivot_wider(names_from = env, 
-              values_from = slope,
-              names_glue = "{env}_slope")
-
-## Only retain birds with > 1 trip
-waal_cro_slopes.wide %<>% group_by(ring) %>% mutate(n_trips = n_distinct(season)) %>% filter(n_trips > 1) %>% ungroup() %>% select(-n_trips)
-
-# Build univariate models and extract h2
-waal_cro_brm.heritability_bathy <- brm(
-  bathy_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = waal_cro_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_bathy <- (VarCorr(waal_cro_brm.heritability_bathy, summary = FALSE)$animal$sd)^2
-v_r_bathy <- (VarCorr(waal_cro_brm.heritability_bathy, summary = FALSE)$residual$sd)^2
-h2_bathy <- as.mcmc(v_animal_bathy / (v_animal_bathy + v_r_bathy) )
-
-save(waal_cro_brm.heritability_bathy, file = "Data_outputs/waal_cro_habitat_pref_heritability_bathy.RData")
-
-
-waal_cro_brm.heritability_chl <- brm(
-  chl_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = waal_cro_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_chl <- (VarCorr(waal_cro_brm.heritability_chl, summary = FALSE)$animal$sd)^2
-v_r_chl <- (VarCorr(waal_cro_brm.heritability_chl, summary = FALSE)$residual$sd)^2
-h2_chl <- as.mcmc(v_animal_chl / (v_animal_chl + v_r_chl) )
-
-save(waal_cro_brm.heritability_chl, file = "Data_outputs/waal_cro_habitat_pref_heritability_chl.RData")
-
-
-waal_cro_brm.heritability_sst <- brm(
-  sst_slope ~ 1 + (1 | ring) + (1 | gr(animal, cov = Amat)),
-  prior = priors_animal,
-  data = waal_cro_slopes.wide,
-  data2 = list(Amat = Amat),
-  chains = 4, cores = 4, iter = 8000, warmup = 4000,
-  control = list(max_treedepth = 15, adapt_delta = 0.99) )
-
-v_animal_sst <- (VarCorr(waal_cro_brm.heritability_sst, summary = FALSE)$animal$sd)^2
-v_r_sst <- (VarCorr(waal_cro_brm.heritability_sst, summary = FALSE)$residual$sd)^2
-h2_sst <- as.mcmc(v_animal_sst / (v_animal_sst + v_r_sst) )
-
-save(waal_cro_brm.heritability_sst, file = "Data_outputs/waal_cro_habitat_pref_heritability_sst.RData")
-
-
-# Extract posteriors 
-
-posteriors <- data.frame(cbind(h2_bathy, h2_chl, h2_sst))
-colnames(posteriors) <- c("h2_bathy", "h2_chl", "h2_sst")
-posteriors %<>% 
-  pivot_longer(cols = starts_with("h2"),
-               names_to = "env",
-               values_to = "h2") %>%
+# Extract h2 ==== 
+waal_cro_h2_slope.posteriors <- purrr::map_df(models_list, ~ {
+  data.frame(h2 = get_h2(.x))
+}, .id = "env") %>%
   mutate(env = recode(env,
-      "h2_bathy" = "Bathymetry",
-      "h2_chl" = "Chlorophyll",
-      "h2_sst" = "SST")) %>%
-  arrange(env) %>%
-  mutate(env = factor(env, levels = rev(unique(env))))
+      "bathy" = "Bathymetry",
+      "chl"   = "Chlorophyll",
+      "sst"   = "SST")) %>%
+  mutate(env = factor(env, levels = c("SST", "Chlorophyll", "Bathymetry"))) 
 
-save(posteriors, file = "Data_outputs/waal_cro_habitat_pref_heritability_posteriors.RData")
+rownames(waal_cro_h2_slope.posteriors) <- NULL
+
+save(waal_cro_h2_slope.posteriors, file = "Data_outputs/waal_cro_habitat_pref_h2_posteriors.RData")
 
 ggplot(posteriors, aes(x = h2, y = env)) +
   geom_density_ridges(fill = "#1b9e77", alpha = 0.5, scale = 1) +
@@ -3868,5 +2106,3 @@ ggplot(posteriors, aes(x = h2, y = env)) +
   theme_bw()
 
 ```
-
-

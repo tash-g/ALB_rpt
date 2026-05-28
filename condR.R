@@ -71,19 +71,23 @@ condR <- function(betaX, meanX, Vx, Vr, Vu, Vv, Cuv, Sigma=NULL, Vp=NULL, Vo=NUL
 	Vs     <- Vv*Vx + meanX^2 * Vv
 	if(is.null(Vp))
 		Vp <- Vf + Vi + Vr + Vo
+	
 	R2s    <- Vs / Vp
 	Rmar   <- Vi / Vp
 	xmin   <- -Cuv/Vv
 	minVix <- Vu - Cuv^2/Vv
+	
 	x 	   <- seq(xrange[1], xrange[2], length.out=501)
-	condR  <- data.frame(x=x, condR=Vu + 2*x*Cuv + x^2*Vv)
-	cat("Variance explained by fixed effects\nVf = ", Vf, "\n",
-	    "Average between-group variance\nVi = ", Vi, "\n",
-	    "Variance explaind by random slopes\nVs = ", Vs, "\n",
-	    "R2 for random slopes\nR2s = ", R2s, "\n",
-	    "Marginalized repeatability\nRmar = ", Rmar, "\n",
-	    "Minimum value of the between-group variance\nminVix = ", minVix, "\n",
-	    "Covariate value at minimum between-group variance\nxmin = ", xmin, "\n", sep = "")
+	# ADDITION: Corrected for 0-1 Repeatability:
+	condR  <- data.frame(x = x, condR = (Vu + 2*x*Cuv + x^2*Vv) / Vp)
+	# condR  <- data.frame(x=x, condR=Vu + 2*x*Cuv + x^2*Vv)
+	# cat("Variance explained by fixed effects\nVf = ", Vf, "\n",
+	#     "Average between-group variance\nVi = ", Vi, "\n",
+	#     "Variance explaind by random slopes\nVs = ", Vs, "\n",
+	#     "R2 for random slopes\nR2s = ", R2s, "\n",
+	#     "Marginalized repeatability\nRmar = ", Rmar, "\n",
+	#     "Minimum value of the between-group variance\nminVix = ", minVix, "\n",
+	#     "Covariate value at minimum between-group variance\nxmin = ", xmin, "\n", sep = "")
 	return(list(Vf=Vf, Vi=Vi, Vs=Vs, R2s=R2s, Rmar=Rmar, minVix=minVix, xmin=xmin, condR=condR))
 }
 

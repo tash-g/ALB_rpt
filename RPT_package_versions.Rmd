@@ -1,0 +1,27 @@
+---
+title: "Package versions"
+author: "Natasha Gillies"
+date: "2026-03-19"
+output: html_document
+---
+
+# Packages for habitat selection analysis
+
+```{r habitat_pref_packages, echo = FALSE, message = FALSE, warning = FALSE}
+library(pander)
+
+# Define & load the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "tidyr", "lubridate", "DHARMa", "data.table", "ggpubr",  "kableExtra", "ggridges", "corrplot", "pROC", "ggeffects", "glmmTMB", "brms", "MASS", "MCMCglmm", "igraph", "MasterBayes", "pheatmap", "nadiv") 
+
+# Install packages not yet installed - change lib to library path
+# installed_packages <- packages %in% rownames(installed.packages())
+# 
+#  if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+invisible(lapply(packages, library, character.only = TRUE))
+
+pander(sessionInfo())
+
+```

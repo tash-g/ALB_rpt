@@ -129,14 +129,14 @@ for (i in 1:length(spec_col)) {
 
 
 # ________________ ####
-# Process GPS data & merge with GPS ============================================
+# Process GPS data & merge with GLS ============================================
 
 spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 
 for (i in 1:length(spec_col)) {
   
   load(paste0("Data_inputs/", spec_col[i], "_gps_labelled.RData"))
-  load(paste0("Data_outputs/", spec_col[i], "_labelledHMM.RData"))
+  #load(paste0("Data_outputs/", spec_col[i], "_labelledHMM.RData"))
   ### Calculate landings using speed filter ----
   
   ## Remove trips with unrealistic speed
@@ -159,7 +159,6 @@ for (i in 1:length(spec_col)) {
                                    "landing", "none")),
            landing = ifelse(is.na(landing), "none", landing),
            behav_state = ifelse(calc_speed > 8.3, "transit", behav_state))
-  
   
   ## Calculate distance to next point
   gps_labelled.df %<>%
