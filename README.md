@@ -14,7 +14,7 @@ Consistency and heritability of foraging traits in albatrosses suggest spatial f
 
 -   Platform: x86_64-w64-mingw32 (Windows)
 
--   Package dependencies are managed using `renv`. The full set of package versions used in the analyses is recorded in renv.lock and can be restored with: `renv::restore()`. Each R script contains a list of attached packages as part of the 'Session info' section at the start of the file. 
+-   Package dependencies are managed using `renv`. The full set of package versions used in the analyses is recorded in renv.lock and can be restored with: `renv::restore()`. Each R script contains a list of attached packages as part of the 'Session info' section at the start of the file.
 
 ## File structure
 
@@ -50,7 +50,7 @@ This project is organised as follows. All analysis scripts, data-processing scri
 
 `└── Posteriors/`
 
-## Scripts
+## Scripts (R)
 
 A short description of each script is given below. Briefly, the workflow is as follows:
 
@@ -59,12 +59,12 @@ A short description of each script is given below. Briefly, the workflow is as f
 3.  Sample points for habitat analyses and add environmental variables;
 4.  Run analyses.
 
-### Functions
+### R/Functions
 
 -   **RPT_functions.R**: Contains custom functions used throughout the workflow for data processing, behavioural extraction, habitat sampling, and repeatability analyses. This script is sourced by other R and RMarkdown scripts as needed.
 -   **condR.R**: Function for calculating conditional repeatability, taken from Schielzeth, H. & Nakagawa, S. (2022). Methods in Ecology and Evolution, 13, 1214--1223. <https://doi.org/10.1111/2041-210X.13856>
 
-### Data processing
+### R/Processing
 
 These scripts generate the core data files used to run the analyses. They are listed in order of usage.
 
@@ -81,7 +81,7 @@ These scripts generate the core data files used to run the analyses. They are li
     -   *Inputs*: `{species}_{colony}_available_pnts_population_level.RData`
     -   *Outputs*: `{species}_{colony}_sst-bathy-chla_data_population_level.RData`
 
-### Data analyses
+### R/Analysis
 
 These scripts are used to run the main analyses in the text. They are written as RMarkdown files to promote usability and to add important information. They are listed in the order they are presented in the manuscript.
 
@@ -101,22 +101,41 @@ These scripts are used to run the main analyses in the text. They are written as
     -   *Inputs*: `all_posteriors_spatial_heritability.RData`; `ba_means.RData`; `bearings_data.RData`; `ba_model_summary.RData`; `bearing_repeatability_results.RData`; `behavioural_repeatability_results.RData`; `{species}_{colony}_behaviour_heritability_posteriors.RData`; `{species}_{colony}_condR_results.RData`; `{species}_{colony}_habitat_{pref/used}_heritability_posteriors.RData`; `heritability_posteriors_all.RData`; `{species}_{colony}_{selection/used}_plot.RData`; `{species}_{colony}_habitat_used_variances.RData`; `{species}_{colony}_gps_labelled.RData`
     -   *Outputs*: `all_gps.RData`; Figures 1-5; Figures S1-S5; Tables S2-S7
 
-## Data inputs
+## Data/
 
 These are the raw and processed datasets used as inputs to the scripts listed above. Files are listed in alphabetical order by their description suffix (i.e. ignoring leading species/colony demarker). Other files produced during the analyses are not presented here.
 
--   `{species}_{colony}_available_pnts_population_level.RData`: Dataset of used and available points for habitat-use analyses, at the population level. Each row represents a used (observed) or available (sampled) location.
+### Raw/
+
+-   `{species}_{colony}_gls_{dates}.RData`: Raw GLS (geolocator) data, including wet--dry immersion records. Each row represents a recorded timepoint for an individual bird.
 
     -   *ring*: Unique bird ID;
-    -   *season*: Breeding season;
-    -   *year*: Calendar year;
-    -   *tripID*: Foraging trip identifier;
-    -   *date_hourly*: Timestamp rounded to the nearest hour;
-    -   *longitude*, *latitude*: Geographic coordinates of the point;
-    -   *used*: Indicator (1 = observed point, 0 = sampled available point);
-    -   *phase*: Breeding phase during which the point occurred;
-    -   *sex*: Sex of the bird;
-    -   *dist_col*: Distance from colony (km).
+    -   *season*: Breeding season, defined as the calendar year in which chicks are expected to fledge, i.e. the year following the onset of breeding;
+    -   *darvic*: Plastic colour ring code;
+    -   *year_started*: First year of tracking;
+    -   *datetime*: Timestamp of record;
+    -   *immersion*: Immersion value (0-200);
+    -   *partner*: Partner bird ID;
+    -   *rs*: Reproductive success code.
+
+-   `{species}_{colony}_gps_{dates}.RData`: Raw GPS data from tracking devices. Each row represents a location fix for an individual bird.
+
+    -   *season*: Breeding season during which the track was recorded;
+    -   *species*: Species code (BBAL or WAAL);
+    -   *ring*: Unique bird ID;
+    -   *datetime*: Timestamp of location fix;
+    -   *longitude*, *latitude*: Geographic coordinates;
+    -   *year*: Calendar year of the fix;
+    -   *ringYr*: Bird ID concatenated with year (unique individual-year identifier).
+
+-   `{species}_{colony}_pedigree.csv`: Pedigree information for individuals used in repeatability and heritability analyses. When sex was unknown, dams and sires were randomly assigned.
+
+    -   *id*: Unique identifier for each individual bird;
+    -   *dam*: Mother's unique ID;
+    -   *sire*: Father's unique ID;
+    -   *Year*: Year of hatching.
+
+### Metadata/
 
 -   `breeding_dates.RData`: Summarised breeding phenology information for individuals, derived from the demographic dataset (`demo_complete`).
 
@@ -125,7 +144,7 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *partner*: Partner bird ID;
     -   *pairID*: Unique pair identifier;
     -   *species*: Species code;
-    -   *colony*: Breeding colony;
+    -   *colony*: Breeding colony (Bird Island, Crozet, Kerguelen);
     -   *lay_date*: Date egg was laid;
     -   *hatch_date*: Date chick hatched.
 
@@ -152,66 +171,58 @@ These are the raw and processed datasets used as inputs to the scripts listed ab
     -   *species*: Species code;
     -   *birthYr*: Hatch year of the bird.
 
--   `{species}_{colony}_gls_{dates}.RData`: Raw GLS (geolocator) data, including wet--dry immersion records. Each row represents a recorded timepoint for an individual bird.
+### Processed/
+
+-   `{species}_{colony}_ba_comparison.RData`: Pairwise comparisons of foraging trips summarised using Bhattacharyya's Affinity (BA), a measure of overlap between utilisation distributions.
+
+    -   *ring_1/ring_2*: Unique bird IDs identifying the two individuals in each comparison;
+    -   *season_1/season_2*: Breeding season of each trip;
+    -   *tripID_1/trip_ID2*: Unique foraging trip identifiers;
+    -   *ba_val*: Bhattacharyya's Affinity value quantifying overlap between the two trips;
+    -   *inter_obs_dist*: Time between trips (days);
+    -   *comp_ind*: Comparison type by individual (within-individual vs between-individual);
+    -   *comp_season*: Comparison type by season (within-season vs between-season).
+
+-   `bearings_data.RData`: Summary of mean trip bearings per individual foraging trip.
 
     -   *ring*: Unique bird ID;
-    -   *season*: Breeding season, defined as the calendar year in which chicks are expected to fledge, i.e. the year following the onset of breeding;
-    -   *darvic*: Plastic colour ring code;
-    -   *year_started*: First year of tracking;
-    -   *datetime*: Timestamp of record;
-    -   *immersion*: Immersion value (0-200);
-    -   *partner*: Partner bird ID;
-    -   *rs*: Reproductive success code.
-
--   `{species}_{colony}_gls_labelled.RData`: GLS trips processed and labelled with trip IDs and behavioural bouts.
-
-    -   *ring*: Unique bird ID;
-    -   *season*: Breeding season during which the trip occurred;
-    -   *datetime*: Timestamp of record;
-    -   *immersion*: Wet--dry immersion value (from GLS logger);
-    -   *birdSeason*: Unique identifier combining bird and season;
-    -   *dryWet*: Immersion state (dry or wet);
-    -   *dur.mins*: Duration of the dry/wet bout in minutes;
-    -   *loc*: Location estimate associated with the bout; on foraging trip or at colony (trip or col);
-    -   *tripID*: Unique identifier for the foraging trip.
-
--   `{species}_{colony}_gps_{dates}.RData`: Raw GPS data from tracking devices. Each row represents a location fix for an individual bird.
-
-    -   *season*: Breeding season during which the track was recorded;
+    -   *season*: Breeding season;
+    -   *phase*: Breeding phase during which the foraging trip occurred (incubation or chick-rearing);
+    -   *boutID*: Unique foraging trip identifier encapsulating season and trip ID;
+    -   *bearing_avg*: Circular mean bearing from the colony during the foraging trip (degrees; signed -180° to 180°);
+    -   *time_since_first*: Time since first foraging trip for that individual in that season (days);
     -   *species*: Species code (BBAL or WAAL);
-    -   *ring*: Unique bird ID;
-    -   *datetime*: Timestamp of location fix;
-    -   *longitude*, *latitude*: Geographic coordinates;
-    -   *year*: Calendar year of the fix;
-    -   *ringYr*: Bird ID concatenated with year (unique individual-year identifier).
+    -   *colony*: Breeding colony (Bird Island, Crozet, or Kerguelen).
 
--   `{species}_{colony}_gps_labelled.RData`: GPS trips processed and labelled with trip IDs and behavioural bouts.
+-   `behavioural_repeatability_data.RData`: Summary of at-sea activity parameters per individual foraging trip.
 
+    -   *species*: Species code (BBAL or WAAL);
+    -   *colony*: Breeding colony (Bird Island, Crozet, or Kerguelen);
     -   *ring*: Unique bird ID;
-    -   *season*: Breeding season during which the trip occurred;
-    -   *ringYr*: Bird ID concatenated with year (individual--year identifier);
-    -   *datetime*: Timestamp of location fix;
-    -   *longitude*, *latitude*: Geographic coordinates of fix;
-    -   *calc_speed*: Estimated speed (m/s) between consecutive fixes;
+    -   *season*: Breeding season;
+    -   *phase*: Breeding phase during which the foraging trip occurred (incubation or chick-rearing);
+    -   *start_date/end_date*: Start and end timestamp, respectively, of the foraging trip, in POSIXct;
+    -   *duration.hrs*: Duration of the foraging trip (hours);
+    -   *duration.days*: Duration of the foraging trip (days);
+    -   *transit_time.pct*: Percentage of the total foraging trip spent in transit (flight) states;
+    -   *rest_time.pct*: Percentage of the total foraging trip spent resting;
+    -   *landings_per_day*: Number of landings (calculated as dry -> wet transitions) per day during the trip.
+    
+-   `{species}_{colony}_habitat_data.RData`: GPS locations representing observed (used) foraging positions and matched available locations used in habitat selection analyses. Available points are sampled to match the temporal structure of observed tracks, and all locations are annotated with contemporaneous environmental covariates.
+
+    -   *tripID*: Unique foraging trip identifier encapsulating ring, season, and trip ID;
+    -   *date_hourly*: Timestamp (nearest hourly resolution) used to align each location to environmental data layers;
+    -   *ID*: Unique bird ID (equivalent to 'ring' in other datasets);
+    -   *season*: Breeding season;
+    -   *year*: Year of observation;
+    -   *longitude/latitude*: Geographic coordinates (decimal degrees, WGS84);
+    -   *used*: Binary indicator of observed (1) or available (0) locations;
+    -   *phase*: Breeding phase during which the foraging trip occurred (incubation or chick-rearing);
     -   *dist_col*: Distance from colony (km);
-    -   *loc*: Labelled location category (e.g., colony, sea);
-    -   *bout*: Foraging bout identifier;
-    -   *boutID*: Unique ID for each bout within a trip;
-    -   *duration.mins*, *duration.hours*: Duration of the bout in minutes/hours;
-    -   *tripID*: Unique identifier for the foraging trip;
-    -   *ID*: Internal unique trip or individual identifier;
-    -   *rs*: Reproductive success code for the pair in that season;
-    -   *lay_date*: Date egg was laid;
-    -   *hatch_date*: Date chick hatched;
-    -   *fail_date*: Date breeding attempt failed (if applicable);
-    -   *hatch_code*: Hatch outcome code (e.g., success/failure);
-    -   *phase*: Breeding phase during which the trip occurred.
+    -   *SST*: Sea surface temperature (°C);
+    -   *bathy*: Bathymetry (metres below sea level);
+    -   *chlA*: Chlorophyll concentration (mg Chl m⁻³);
+    -   *ID_season*: Combined identifier for individual and season (ID × season);
+    -   *sst_scaled/bathy_scaled/chl_scaled/dist_col/scaled*: nvironmental and geographic covariates scaled to two standard deviations.
 
--   `{species}_{colony}_habitat_data.RData`: GLS trips processed and labelled with trip IDs and behavioural bouts.
 
--   `{species}_{colony}_pedigree.csv`: Pedigree information for individuals used in repeatability and heritability analyses. When sex was unknown, dams and sires were randomly assigned.
-
-    -   *id*: Unique identifier for each individual bird;
-    -   *dam*: Mother's unique ID;
-    -   *sire*: Father's unique ID;
-    -   *Year*: Year of hatching.
