@@ -1,0 +1,25 @@
+library(cffr)
+
+cff <- cff_create_manually(
+  title = "Consistency and heritability of foraging traits in albatrosses suggest spatial fidelity is learned rather than inherited",
+  authors = list(
+    list(given = "Natasha", family = "Gillies"),
+    list(given = "Richard A.", family = "Phillips"),
+    list(given = "Henri", family = "Weimerskirch"),
+    list(given = "Jonathan R.", family = "Potts"),
+    list(given = "Denis", family = "Réale"),
+    list(given = "Alastair J.", family = "Wilson"),
+    list(given = "Frédéric", family = "Angelier"),
+    list(given = "Christophe", family = "Barbraud"),
+    list(given = "Ashley", family = "Bennison"),
+    list(given = "Karine", family = "Delord"),
+    list(given = "Prescillia", family = "Lemesle"),
+    list(given = "Samuel", family = "Peroteau"),
+    list(given = "Andrew G.", family = "Wood"),
+    list(given = "José C.", family = "Xavier"),
+    list(given = "Samantha C.", family = "Patrick")
+  ),
+  type = "manuscript"
+)
+
+cff_write(cff, "CITATION.cff")

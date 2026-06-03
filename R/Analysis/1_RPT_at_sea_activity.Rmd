@@ -1,0 +1,449 @@
+---
+title: "Repeatability in at-sea activity"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Session info
+
+**R version 4.3.1 (2023-06-16 ucrt)**
+
+**Platform:** x86_64-w64-mingw32/x64 (64-bit) 
+
+**locale:**
+_LC_COLLATE=English_United Kingdom.utf8_, _LC_CTYPE=English_United Kingdom.utf8_, _LC_MONETARY=English_United Kingdom.utf8_, _LC_NUMERIC=C_ and _LC_TIME=English_United Kingdom.utf8_
+
+**attached base packages:** 
+_stats_, _graphics_, _grDevices_, _utils_, _datasets_, _methods_ and _base_
+
+**other attached packages:** 
+_MasterBayes(v.2.59)_, _kinship2(v.1.9.6.2)_, _quadprog(v.1.5-8)_, _genetics(v.1.3.8.1.3)_, _mvtnorm(v.1.3-3)_, _MASS(v.7.3-60)_, _gtools(v.3.9.5)_, _gdata(v.3.0.1)_, _combinat(v.0.0-8)_, _igraph(v.2.1.4)_, _MCMCglmm(v.2.36)_, _ape(v.5.8-1)_, _coda(v.0.19-4.1)_, _brms(v.2.23.0)_, _Rcpp(v.1.1.1)_, _ggridges(v.0.5.7)_, _glmmTMB(v.1.1.11)_, _stringr(v.1.6.0)_, _kableExtra(v.1.4.0)_, _tidyr(v.1.3.2)_, _gridExtra(v.2.3)_, _lme4(v.2.0-1)_, _Matrix(v.1.5-4.1)_, _ggplot2(v.4.0.2)_, _magrittr(v.2.0.3)_ and _dplyr(v.1.2.0)_
+
+## Set-up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Functions for GPS processing and plotting
+source("R/Functions/RPT_functions.R")
+
+# Define the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB", "ggridges", "brms", "MCMCglmm", "igraph", "MasterBayes")
+
+# Load packages
+invisible(lapply(packages, library, character.only = TRUE))
+
+# Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+
+# Make sure using dplyr select
+select <- dplyr::select
+
+# Set colours
+col_between <- "#91c5f2"
+col_within <- "#0b3860"
+
+
+```
+
+```{r load_data}
+
+ind_files <- list.files("Data/Intermediate/", pattern = "individual_gls_trips")
+ind_list <- vector(mode = "list", length = 4)
+
+for (i in 1:length(ind_files)) {
+  
+  my_data <- loadRData(paste0("Data/Intermediate/", ind_files[i]))
+  ind_list[[i]] <- my_data
+  
+}
+
+rep_data <- do.call("rbind", ind_list)
+
+save(rep_data, file = "Data/Processed/behavioural_repeatability_data.RData") 
+
+```
+
+### Sample sizes
+
+```{r sample_sizes}
+
+trip_sum <- rep_data %>%
+  group_by(colony, species, ring) %>%
+  summarise(n_trips = n(),
+            n_seasons = n_distinct(season),
+            .groups = "drop") %>%
+  group_by(colony, species) %>%
+  summarise(N = n_distinct(ring),
+            'Trips per bird' = mean(n_trips),
+            'Seasons per bird' = mean(n_seasons)) %>%
+  mutate(species = ifelse(species == "bbal", "BBAL", "WAAL"),
+         colony = ifelse(colony == "ker", "Kerguelen",
+                         ifelse(colony == "cro", "Crozet", "Bird Island")))
+
+ind_per_seasons <- rep_data %>%
+  group_by(colony, species, ring) %>%
+  summarise(n_seasons = n_distinct(season)) %>%
+  ungroup() %>%
+  mutate(rpt_category = case_when(
+    n_seasons == 1 ~ "1 seasons",
+    n_seasons == 2 ~ "2 seasons",
+    n_seasons == 3 ~ "3 seasons",
+    n_seasons > 3 ~ "4+ seasons"
+  )) %>%
+  group_by(colony, species, rpt_category) %>%
+  summarise(num_birds = n()) %>%
+  arrange(species, colony, rpt_category) %>%
+  pivot_wider(
+    names_from = rpt_category,       
+    values_from = num_birds, 
+    values_fill = 0) %>%
+  mutate(species = ifelse(species == "bbal", "BBAL", "WAAL"),
+         colony = ifelse(colony == "ker", "Kerguelen",
+                         ifelse(colony == "cro", "Crozet", "Bird Island"))) %>%
+  relocate(species, .before = colony) 
+
+summary.table <- merge(ind_per_seasons, trip_sum, by = c("species", "colony")) %>%
+  rename(Species = species, Colony = colony)
+
+
+kable(summary.table, format = "html", 
+      caption = 'Table 1. Sample sizes for each species and colony, showing the number of individuals for which we have 2, 3, or 4+ seasons of data, collected using GLS and/or GPS devices.') %>%
+  collapse_rows(columns = c(1)) %>%
+  row_spec(2, extra_css = "border-bottom: 1px solid;") %>%
+  kable_classic(font_size = 12)
+
+
+
+
+```
+
+# Estimate repeatablity
+
+```{r estimate_repeatability, eval = FALSE}
+
+load("Data/Processed/behavioural_repeatability_data.RData") 
+
+# Split data
+rep_bbal <- rep_data %>% filter(species == "bbal")
+rep_waal <- rep_data %>% filter(species == "waal")
+
+# Set weakly informative priors
+priors <- c(
+  prior(normal(0, 10), class = "Intercept"), # Intercept
+  prior(normal(0, 2), class = "b"), # Fixed effects
+  prior(student_t(3, 0, 5), class = "sd"), # Group-level SDs
+  prior(student_t(3, 0, 10), class = "sigma"))
+
+# Trying different response variables and examining repeatability
+cov <- c("duration.hrs", "landings_per_day", "transit_time.pct", "rest_time.pct")
+
+rpt_output.list <- vector(mode = "list", length = length(cov))
+
+for (i in 1:length(cov)) {
+  
+  print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", i, " of ", length(cov), ": ", cov[i]))
+  
+  if(grepl("landings", cov[i])) { cov_value <- cov[i] } else {
+  cov_value <- paste0("log(", cov[i], ")") }
+  formula <- paste0(cov_value, " ~ phase + (1 | season) + (1 | ring ) + (1 | ring_season)") 
+  
+  # Fit models
+  
+  
+  ## BBAL ## ----
+  print("Processing black-browed...")
+
+  
+  ### Bird Island ### ----
+  bbal_birdis.brm_rpt <- brm(
+    formula = formula,
+    data = rep_bbal %>% filter(colony == "birdis"),
+    family = gaussian(),  
+    prior = priors,
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Calc repeatability
+  posterior <- as_draws_df(bbal_birdis.brm_rpt)
+  
+  bbal_birdis.post_df <- data.frame(cbind(calc_rpt_brms_slope(bbal_birdis.brm_rpt, rep_bbal %>% filter(colony == "birdis"))),
+                              behaviour = cov[i],
+                              species = "BBAL",
+                              colony = "Bird Island")
+    
+  mod_name <- paste0("bbal_birdis.brm_rpt", cov[i])
+  assign(mod_name, bbal_birdis.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Outputs/Models/bbal_birdis_brms_behaviour_repeatability_", cov[i], ".RData"))
+  
+  
+  ### Kerguelen ### ----
+  bbal_ker.brm_rpt <- brm(
+      formula = formula,
+      data = rep_bbal %>% filter(colony == "ker"),
+      family = gaussian(),  
+      prior = priors,
+      cores = 4, chains = 4, iter = 4000,
+      control = list(adapt_delta = 0.95))
+    
+  # Calc repeatability
+  posterior <- as_draws_df(bbal_ker.brm_rpt)
+
+  bbal_ker.post_df <- data.frame(cbind(calc_rpt_brms_slope(bbal_ker.brm_rpt, rep_bbal %>% filter(colony == "ker"))),
+                             behaviour = cov[i],
+                             species = "BBAL",
+                             colony = "Kerguelen")
+  
+  mod_name <- paste0("bbal_ker.brm_rpt_", cov[i])
+  assign(mod_name, bbal_ker.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Outputs/Models/bbal_ker_brms_behaviour_repeatability_", cov[i], ".RData")) 
+  
+  
+  ## WAAL ## ----
+  print("Processing wanderers...")
+
+  ### Bird Island ### ----
+   waal_birdis.brm_rpt <- brm(
+    formula = formula,
+    data = rep_waal %>% filter(colony == "birdis"),
+    family = gaussian(),  
+    prior = priors,
+    cores = 4, chains = 4, iter = 4000,
+    control = list(adapt_delta = 0.95))
+  
+  # Calc repeatability
+  posterior <- as_draws_df(waal_birdis.brm_rpt)
+ 
+  waal_birdis.post_df <- data.frame(cbind(calc_rpt_brms_slope(waal_birdis.brm_rpt, rep_waal %>% filter(colony == "birdis"))),
+                              behaviour = cov[i],
+                              species = "WAAL",
+                              colony = "Bird Island")
+    
+  mod_name <- paste0("waal_birdis.brm_rpt", cov[i])
+  assign(mod_name, waal_birdis.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Outputs/Models/waal_birdis_brms_behaviour_repeatability_", cov[i], ".RData"))
+  
+  ### Crozet ### ----
+  waal_cro.brm_rpt <- brm(
+      formula = formula,
+      data = rep_waal %>% filter(colony == "cro"),
+      family = gaussian(),  
+      prior = priors,
+      cores = 4, chains = 4, iter = 4000,
+      control = list(adapt_delta = 0.95))
+    
+  # Calc repeatability
+  posterior <- as_draws_df(waal_cro.brm_rpt)
+  
+  waal_cro.post_df <- data.frame(cbind(calc_rpt_brms_slope(waal_cro.brm_rpt, rep_waal %>% filter(colony == "cro"))),
+                             behaviour = cov[i],
+                             species = "WAAL",
+                             colony = "Crozet")
+  
+  mod_name <- paste0("waal_cro.brm_rpt_", cov[i])
+  assign(mod_name, waal_cro.brm_rpt)
+  
+  save(list = mod_name, file = paste0("Outputs/Models/waal_cro_brms_behaviour_repeatability_", cov[i], ".RData")) 
+  
+  
+  # Output summary
+  rpt_output.list[[i]] <- rbind(waal_cro.post_df, waal_birdis.post_df,
+                                bbal_ker.post_df, bbal_birdis.post_df)
+   
+}
+
+rpt_output.full <- do.call("rbind", rpt_output.list)
+rpt_output.full %<>% arrange(species)
+
+# Get sample sizes and add them in
+rep_samples <- rep_data %>% 
+  group_by(colony, species) %>% 
+  summarise(n_trips = n_distinct(start_date), n_birds = n_distinct(ring)) %>% 
+  mutate(species = ifelse(species == "bbal", "BBAL", "WAAL"),
+         colony = case_when(colony == "birdis" ~ "Bird Island",
+                            colony == "cro" ~ "Crozet",
+                            colony == "ker" ~ "Kerguelen"))
+
+rpt_output.full %<>% left_join(rep_samples, by = c("species", "colony"))
+
+save(rpt_output.full, file = "Outputs/Posteriors/behavioural_repeatability_posteriors.RData")  
+# Model checking 
+# plot(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+# pp_check(bbal_birdis.brm_rpt)
+# 
+# pairs(mod_brm, variable = c("sd_animal__Intercept", "sigma"))
+
+```
+
+
+# Estimate heritability
+
+```{r effort_heritability}
+
+# Set priors
+effort_priors <- c(
+  prior(normal(0, 1), class = "Intercept"),
+  prior(normal(0, 1), class = "b"),
+  prior(student_t(3, 0, 1), class = "sd", group = "ring_pe"),
+  prior(exponential(1), class = "sd", group = "animal"),
+  prior(student_t(3, 0, 1), class = "sigma"))
+
+# Load the data
+load("Data/Processed/behavioural_repeatability_data.RData") 
+
+## Remove zero values
+rep_data %<>% filter(rowSums(select(., landings_per_day, transit_time.pct) == 0) == 0)
+
+## New variable names; scale covariates
+rep_data %<>% mutate(animal = ring, ring_pe = ring) 
+
+# Loop through species and colonies
+spec_col <- c("bbal_birdis", "waal_birdis", "waal_cro")
+posteriors = list()
+
+cov <- c("duration.hrs", "landings_per_day", "transit_time.pct", "rest_time.pct")
+
+for (i in 1:length(spec_col)) {
+
+  my_species <- strsplit(spec_col[i], "_")[[1]][1]
+  my_colony <- strsplit(spec_col[i], "_")[[1]][2]
+  
+  mod_data <- rep_data %>% filter(species == my_species & colony == my_colony)
+
+  # Load the pedigree info
+  pedigree.df <- read.csv(paste0("Data/Raw/", my_species, "_", my_colony, "_pedigree.csv"))[,1:3] #Data/Raw/
+  pedigree.df[,c(1:3)] <- lapply(pedigree.df[,c(1:3)], as.character)
+  
+  ## Create the genetic matrix
+  Amat <- make_Amat(mod_data, pedigree.df)
+  
+  # Fit the models
+  posteriors_list <- list()
+  
+  for (c in 1:length(cov)) {
+    
+    print(paste0(format(Sys.time(), "%Y-%m-%d %H:%M"), " Processing covariate ", c, " of ", length(cov), ": ", cov[c]))
+    
+    if(grepl("landings", cov[c])) { cov_value <- paste0(cov[c], "_scaled") } else {
+         cov_value <- paste0(cov[c], "_log_scaled") }
+    
+    formula <- paste0(cov_value, " ~ 1 + phase + (1 | season) + (1 | ring_pe) + (1 | ring_season) + (1 | gr(animal, cov = Amat))")
+
+    # Scale and log the covariate
+    
+    if(grepl("landings", cov[c])) { 
+      
+      scaled_col <- paste0(cov[c], "_scaled")
+      mod_data[[scaled_col]] <- scale(mod_data[[cov[c]]])
+      
+    } else {
+         
+      log_col <- paste0(cov[c], "_log")
+      scaled_col <- paste0(cov[c], "_log_scaled")
+
+      mod_data[[log_col]] <- log(mod_data[[cov[c]]])
+      mod_data[[scaled_col]] <- scale(mod_data[[log_col]])[,1]
+    }
+    
+    # Fit the model
+    mod_brm <- brm(
+      formula = formula,
+      prior = effort_priors,
+      data = mod_data,
+      family = gaussian(),
+      data2 = list(Amat = Amat),
+      chains = 4, cores = 4, iter = 8000, warmup = 4000,
+      control = list(max_treedepth = 15, adapt_delta = 0.99))
+    
+    ## Get posteriors 
+    posterior <- as_draws_df(mod_brm)
+    var_season  <- posterior$sd_season__Intercept^2
+    var_ring_pe <- posterior$sd_ring_pe__Intercept^2
+    var_ring_season <- posterior$sd_ring_season__Intercept^2
+    var_animal  <- posterior$sd_animal__Intercept^2
+    var_resid   <- posterior$sigma^2
+    
+    h2_post <- var_animal / (var_animal + var_season + var_ring_pe + var_ring_season + var_resid)
+    
+    posterior.df <- data.frame(cbind(var_animal, var_season, var_resid, h2_post),
+                               behaviour = cov[c])
+    
+    posteriors_list[[c]] <- posterior.df
+   
+    # Output model
+    save(mod_brm, file = paste0("Outputs/Models/",
+                                my_species, "_", my_colony,
+                                "_brms_behaviour_heritability_", cov[c], ".RData"))
+    }
+     
+  posteriors[[spec_col[i]]] <- bind_rows(posteriors_list)
+  
+  }
+
+
+posteriors_df <- bind_rows(posteriors, .id = "spec_col")
+save(posteriors_df, file = "Outputs/Posteriors/behaviour_heritability_posteriors.RData")
+
+```
+
+### Process heritability estimates
+
+```{r plot_effort_heritability}
+
+load("Outputs/Posteriors/behaviour_heritability_posteriors.RData") 
+
+posteriors_df %<>%
+  mutate(behaviour = recode(behaviour,
+      "duration.hrs" = "Trip duration",
+      "landings_per_day" = "Landings per day",
+      "transit_time.pct" = "Flight time",
+      "rest_time.pct" = "Rest time"),
+      behaviour = factor(behaviour),              
+      behaviour = forcats::fct_rev(behaviour))
+
+posteriors_df %<>%
+  group_by(spec_col, behaviour) %>%
+  mutate(mean_h2 = mean(h2_post, na.rm = TRUE)) %>%
+  arrange(behaviour, mean_h2) %>%
+  ungroup()
+
+## Add facet code for plotting
+posteriors_df %<>%
+   mutate(facet_code = case_when(
+    spec_col == "bbal_birdis" ~ "A",
+    spec_col == "waal_birdis" ~ "C",
+    spec_col == "waal_cro" ~ "D"))
+
+
+# Make the plot
+design = "
+A#
+CD
+"
+
+facet_labels <- c(
+  A = "BBAL Bird Island",
+  C = "WAAL Bird Island",
+  D = "WAAL Crozet"
+)
+
+heritability_plot <- ggplot(posteriors_df, aes(x = h2_post, y = behaviour)) +
+  # stat_density_ridges(fill = "#1b9e77",  alpha = 0.6, scale = 1, quantile_lines = TRUE, quantiles = 2, vline_colour = "#08519c", vline_size = 1, vline_type = "dashed") +
+  geom_density_ridges(fill = "#1b9e77", alpha = 0.6, scale = 1) +
+  theme_bw() +
+   ggh4x::facet_manual(~facet_code, design = design, scales = "free_x",
+                       labeller = as_labeller(facet_labels)) +
+  labs(x = "Posterior distribution for heritability (h²)", y = "") 
+
+
+```

@@ -2,13 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
-Data_inputs/Unknown
-Data_outputs/
-Workshop/
-Data_env/
-Condor/
-Collaborators/
-Exploratory/
-Figures/
-RPT_MKD_data_breakdown.Rmd
+Backup_to_delete_after_publication/
 *.html
+Outputs/
+Data/Intermediate
+Data/Temporary

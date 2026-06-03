@@ -1,0 +1,307 @@
+---
+title: "Processing 2: Extract at-sea activity"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+Purpose of script: Extract at-sea activity from GLS data.
+
+Inputs:
+
+-   `Data/Intermediate/{species}_{colony}_gls_labelled.RData`
+
+-   `Data/Metadata/{BAS/Chize}_demo_complete.RData`
+
+Outputs:
+
+-   `Data/Intermediate/{species}_{colony}_individual_gls_trips.RData`
+
+
+# Session info
+
+**R version 4.3.1 (2023-06-16 ucrt)**
+
+**Platform:** x86_64-w64-mingw32/x64 (64-bit) 
+
+**locale:**
+_LC_COLLATE=English_United Kingdom.utf8_, _LC_CTYPE=English_United Kingdom.utf8_, _LC_MONETARY=English_United Kingdom.utf8_, _LC_NUMERIC=C_ and _LC_TIME=English_United Kingdom.utf8_
+
+**attached base packages:** 
+_stats_, _graphics_, _grDevices_, _utils_, _datasets_, _methods_ and _base_
+
+**other attached packages:** 
+_data.table(v.1.18.2.1)_, _ggplot2(v.4.0.2)_, _magrittr(v.2.0.3)_ and _dplyr(v.1.2.0)_
+
+# Set-up
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
+
+# Define the packages
+packages <- c("dplyr", "magrittr", "readxl", "ggplot2", "data.table", "tidyr")
+
+# Install packages not yet installed - change lib to library path
+#installed_packages <- packages %in% rownames(installed.packages())
+
+#if (any(installed_packages == FALSE)) {
+#  install.packages(packages[!installed_packages], lib = "C:/Users/libraryPath")
+#}
+
+# Load packages
+invisible(lapply(packages, library, character.only = TRUE))
+
+source("R/Functions/RPT_functions.R")
+
+
+# Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+select <- dplyr::select
+
+```
+
+## Cut GLS to breeding season
+
+```{r cut_GLS_breeding}
+
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+
+for (i in 1:length(spec_col)) {
+  
+  load(paste0("Data/Intermediate/", spec_col[i], "_gls_labelled.RData"))
+  
+  gls_labelled.df %<>%
+    mutate(ring = toupper(ring),
+           ring = gsub(" ", "", ring),
+           ringYr = paste(ring, season, sep = "_")) %>%
+    filter(!is.na(ring))
+  
+  
+  ### Load meta data ----
+  
+  meta_source <- ifelse(grepl("birdis", spec_col[i]), "BAS", "Chize")
+  all_demo <- loadRData(paste0("Data/Metadata/", meta_source, "_demo_complete.RData"))
+  
+  all_demo %<>% mutate(species = tolower(species)) %>% filter(species == my_species) 
+  
+  ## Make dataframe long
+  demoA <- all_demo %>% select(-c(bird2_sex, bird2_birthYr)) %>% 
+    dplyr::rename(ring = bird1, sex = bird1_sex, birthYr = bird1_birthYr, partner = bird2) %>%
+    filter(!is.na(ring)) 
+  
+  demoB <- all_demo %>% select(-c(bird1_sex, bird1_birthYr)) %>% 
+    dplyr::rename(ring = bird2, sex = bird2_sex, birthYr = bird2_birthYr, partner = bird1) %>%
+    filter(!is.na(ring)) 
+  
+  my_demo <- rbind(demoA, demoB)
+  my_demo %<>% group_by(ring, season) %>% tidyr::fill(everything(), .direction = 'updown') %>% distinct()
+  
+  ## Manual breeding dates ----
+  
+  if (spec_col[i] == "waal_birdis") {
+    
+    median_lay <- "12-01" 
+    median_hatch <- "03-10"
+    
+  } else if (spec_col[i] == "bba_birdis") {
+    
+    median_lay <- "10-13"
+    median_hatch <- "01-05"
+    
+  } else if (spec_col[i] == "waal_cro") {
+    
+    median_lay <- "12-01"
+    median_hatch <- "03-22"
+    
+  } else if (spec_col[i] == "bba_kerguelen") {
+    
+    median_lay <- "09-25"
+    median_hatch <- "12-15"
+  }
+  
+  ## Match in metadata and filter to breeding ----
+  
+  setDT(my_demo)
+  my_demo %<>% select(ring, season, rs, lay_date, hatch_date, fail_date) %>%
+    mutate(season = as.numeric(season)) %>% distinct()
+  my_demo <- my_demo[, .SD[sample(.N, 1)], by = .(ring, season)]
+  
+  setDT(gls_labelled.df)
+  
+  # Merge using data.table
+  gls_labelled.df <- merge(gls_labelled.df, my_demo, by = c("ring", "season"), all.x = T)
+  
+  ## Cut to breeding
+  hatch_time = ifelse(my_species == "bba", 101, 121)
+  brood_time = ifelse(my_species == "bba", 38, 48) # brooding ends 22/01
+  
+  gls_labelled.df %<>% rename(boutID = tripID)
+  
+  gls_labelled.df <- cut_to_breeding(gls_labelled.df, median_lay, median_hatch, hatch_time, brood_time)
+  save(gls_labelled.df, file = paste0("Data/Intermediate/", spec_col[i], "_gls_labelled_subset.RData"))
+  
+}
+
+```
+
+## Extract behaviours
+
+```{r extract_behaviours}
+
+# Extract behaviours =====
+
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+
+for (i in 1:length(spec_col)) {
+  
+  message("Processing ", spec_col[i])
+  
+  load(paste0("Data/Intermediate/", spec_col[i], "_gls_labelled_subset.RData"))
+  
+  ## Deal with duplicates
+  gls_labelled.df %<>%
+    group_by(birdSeason) %>%
+    mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S"),
+           datetime = lubridate::round_date(datetime, "10 minutes")) %>%
+    distinct() %>%
+    arrange(datetime)
+  
+  all_birds <- unique(gls_labelled.df$ringYr)
+  all_trips.list <- vector(mode = "list", length = length(all_birds))
+  
+  species <- strsplit(spec_col[i], "_")[[1]][1]
+  colony <- strsplit(spec_col[i], "_")[[1]][2]
+  
+  pb <- txtProgressBar(min = 0, max = length(all_birds), style = 3)
+  
+  for (j in 1:length(all_birds)) {
+    
+    setTxtProgressBar(pb, j)
+    
+    gls_j <- subset(gls_labelled.df, ringYr == all_birds[j]) %>%
+      ungroup() %>%
+      mutate(behav_state = ifelse(immersion <= 3, "transit", 
+                                  ifelse(immersion >= 197, "rest", "aloft")),
+             datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S")) %>%
+      select(c(ring, season, datetime, ringYr, phase, loc, behav_state, 
+               immersion, dryWet)) %>%
+      relocate(ring, season, datetime, ringYr, phase, loc, behav_state, 
+               immersion, dryWet)
+
+    # Clean duplicates - sometimes have non-logging period recorded as co-deployed
+    gls_j %<>%
+      mutate(datetime = lubridate::round_date(datetime, "10 minutes")) %>%
+      group_by(datetime) %>%
+      arrange(desc(immersion)) %>%
+      slice(1) %>%
+      ungroup()
+    
+    trips_j <- gls_j
+    trips_j$tripID = rep(1:length(rle(trips_j$loc)$values), rle(trips_j$loc)$lengths)
+    
+    trips_j %<>%
+      group_by(ring, season, tripID) %>%
+      mutate(start = datetime[1],
+             end = datetime[n()],
+             duration.mins = as.numeric(difftime(end, start, unit = "mins"))) %>%
+      arrange(start) %>%
+      filter(!is.na(datetime) & !is.na(end))
+    
+    ### Get rid of very short trips/col visits ----
+    if (all(trips_j$duration.mins < 480)) next
+    
+    max_tries <- 5
+    tries <- 0
+    
+    while(any(trips_j$duration.mins <= 480) & tries <= max_tries) {
+      
+      tries = tries + 1
+      
+      trips_j$loc <- ifelse(trips_j$duration.mins <= 480, 
+                             ifelse(trips_j$loc == "trip", "col", "trip"),
+                             trips_j$loc)
+      trips_j$tripID <- rep(1:length(rle(trips_j$loc)$values), rle(trips_j$loc)$length)
+      
+      trips_j %<>%
+        group_by(ring, season, tripID) %>%
+        mutate(start = datetime[1],
+               end = datetime[n()],
+               duration.mins = as.numeric(difftime(end, start, unit = "mins"))) %>%
+        arrange(start)
+      
+    }
+    
+    
+    # Skip if only colony locations
+    if(length(unique(trips_j$loc)) < 2) next
+    
+    ## Summarise behaviours ----
+    trips_j %<>%
+      group_by(tripID) %>%
+      filter(loc == "trip") %>%
+      mutate(datetime = as.POSIXct(datetime, format = "%Y-%m-%d %H:%M:%S"),
+             prev_state = lag(dryWet),
+             bout_time = as.numeric(difftime(datetime, lag(datetime), units = "mins"))) %>%
+      dplyr::summarise(species = species,
+                       colony = colony,
+                       ring = ring[1],
+                       season = season[1],
+                       phase = phase[1],
+                       start_date = datetime[1],
+                       end_date = max(datetime, na.rm = T),
+                       loc = loc[1],
+                       # Duration
+                       duration.hrs = as.numeric(difftime(end_date, start_date, units = "hours") + 0.17),
+                       duration.days = duration.hrs / 24,
+                       # Transitions
+                       transitions = sum(dryWet != prev_state, na.rm = TRUE),  # Count state transitions
+                       transitions.var = var(transitions),
+                       landing = sum(dryWet == "dry" & prev_state == "wet", na.rm = TRUE),
+                       takeoff = sum(dryWet == "wet" & prev_state == "dry", na.rm = TRUE),
+                       # Behaviours
+                       transit_time.hrs = sum(bout_time[behav_state == "transit"], na.rm = T) / 60,
+                       rest_time.hrs = sum(bout_time[behav_state == "rest"], na.rm = T) / 60,
+                       transit_time.pct = transit_time.hrs/duration.hrs * 100,
+                       rest_time.pct = rest_time.hrs/duration.hrs * 100) %>%
+      ungroup() %>%
+      filter(duration.hrs > 0) %>%
+      filter(!(transit_time.pct > 100 | rest_time.pct > 100)) %>%
+      mutate(landings_per_day = landing/duration.days) %>%
+      select(-tripID) %>%
+      filter(duration.days <= 30 & rest_time.pct > 0 & rest_time.pct < 100)
+    
+    # Add ring_season
+    trips_j %<>%
+      mutate(ring_season = paste(ring, season, sep = "_")) %>%
+      relocate(ring_season, .before = colony)
+    
+    all_trips.list[[j]] <- trips_j
+    
+  }
+  
+  close(pb)
+  trips_summary <- do.call("rbind", all_trips.list)
+  
+  # Do some filtering to ensure capture real foraging trips
+  trips_summary %<>% filter(duration.days <= 30 &
+                             rest_time.pct > 0 & 
+                              rest_time.pct < 100,
+                               landings_per_day > 0)
+  
+  # Remove unnecessary columns
+  trips_summary %<>% 
+    select(species, ring_season, colony, ring, season, phase, 
+           start_date, duration.hrs, landings_per_day, transit_time.pct, rest_time.pct)
+  
+  # Output data
+  save(trips_summary, file = paste0("Data/Intermediate/", spec_col[i], "_individual_gls_trips.RData"))
+  
+}
+
+
+
+```
+

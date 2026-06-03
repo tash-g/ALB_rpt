@@ -1,0 +1,766 @@
+---
+title: "Spatial repeatability results"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+---
+
+# Session info
+
+**R version 4.3.1 (2023-06-16 ucrt)**
+
+**Platform:** x86_64-w64-mingw32/x64 (64-bit) 
+
+**locale:**
+_LC_COLLATE=English_United Kingdom.utf8_, _LC_CTYPE=English_United Kingdom.utf8_, _LC_MONETARY=English_United Kingdom.utf8_, _LC_NUMERIC=C_ and _LC_TIME=English_United Kingdom.utf8_
+
+**attached base packages:** 
+_stats_, _graphics_, _grDevices_, _utils_, _datasets_, _methods_ and _base_
+
+**other attached packages:** 
+_circular(v.0.5-1)_, _brms(v.2.23.0)_, _Rcpp(v.1.1.1)_, _nadiv(v.2.18.0)_, _MasterBayes(v.2.59)_, _kinship2(v.1.9.6.2)_, _quadprog(v.1.5-8)_, _genetics(v.1.3.8.1.3)_, _mvtnorm(v.1.3-3)_, _gtools(v.3.9.5)_, _gdata(v.3.0.1)_, _combinat(v.0.0-8)_, _coda(v.0.19-4.1)_, _betareg(v.3.2-0)_, _adehabitatHR(v.0.4.22)_, _adehabitatLT(v.0.3.28)_, _CircStats(v.0.2-7)_, _boot(v.1.3-28.1)_, _MASS(v.7.3-60)_, _adehabitatMA(v.0.3.17)_, _ade4(v.1.7-24)_, _data.table(v.1.18.2.1)_, _emmeans(v.2.0.3)_, _kableExtra(v.1.4.0)_, _sp(v.2.2-1)_, _geosphere(v.1.5-20)_, _purrr(v.1.2.1)_, _rnaturalearth(v.1.2.0)_, _ggridges(v.0.5.7)_, _sf(v.1.0-20)_, _tidyr(v.1.3.2)_, _ggpubr(v.0.6.3)_, _lme4(v.2.0-1)_, _Matrix(v.1.5-4.1)_, _ggplot2(v.4.0.2)_, _magrittr(v.2.0.3)_ and _dplyr(v.1.2.0)_
+
+## Set-up
+
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+# Load functions, packages, & data ---------------------------------------------
+
+# Functions for GPS processing and plotting
+source("R/Functions/RPT_functions.R")
+
+# Define the packages
+packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "ggpubr", "tidyr", "sf", "ggridges", "rnaturalearth", "purrr", "geosphere", "sp", "kableExtra", "emmeans", "data.table", "adehabitatHR", "betareg", "MasterBayes", "nadiv", "brms", "circular") 
+
+# Install packages not yet installed - change lib to library path
+# installed_packages <- packages %in% rownames(installed.packages())
+# 
+# if (any(installed_packages == FALSE)) {
+#   install.packages(packages[!installed_packages])
+# }
+
+# Load packages
+invisible(lapply(packages, library, character.only = TRUE))
+
+# Suppress dplyr summarise warning
+options(dplyr.summarise.inform = FALSE)
+
+# Make sure using dplyr select
+select <- dplyr::select
+
+# Set colours
+col_between <- "#91c5f2"
+col_within <- "#0b3860"
+
+```
+
+## Bearings
+
+### Prep data
+
+```{r prep_bearings_data, eval = FALSE}
+
+# Set parameters
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+
+# Set colony coordinates
+ker_coords <- data.frame(longitude = 70.2333, latitude = -49.6833)
+bi_coords <- data.frame(longitude = -38.05, latitude = -54.00)
+cro_coords <- data.frame(longitude = 51.706972, latitude = -46.358639)
+
+# Make list to collect bearings data
+trip_bearings.list <- list()
+
+for (i in 1:length(spec_col)) {
+  
+  if (grepl("ker", spec_col[i])) {
+    col_coords <- ker_coords
+  } else if (grepl("birdis", spec_col[i])) {
+    col_coords <- bi_coords
+  } else if (grepl("cro", spec_col[i])) {
+    col_coords <- cro_coords }
+  
+  my_file <- list.files("Data/Intermediate/", pattern = paste0(spec_col[i], "_gps_labelled"))
+  
+  my_gps <- loadRData(paste0("Data/Intermediate/", my_file)) 
+ 
+  my_gps %<>%
+    mutate(ID = paste0(ring, "_", season, "_", boutID),
+           season = ifelse(as.numeric(format(as.Date(datetime), "%m")) < 9,
+                           as.numeric(format(as.Date(datetime), "%Y")),
+                           as.numeric(format(as.Date(datetime), "%Y")) + 1 )) %>%
+    filter(loc == "trip")
+  
+  ## Correct issues with breeding phase
+  trips_to_fix <- my_gps %>%
+    group_by(tripID) %>%
+    summarise(n_phases = n_distinct(phase)) %>%
+    filter(n_phases > 1) %>%
+    pull(tripID)
+  
+  my_gps %<>% mutate(phase = if_else(tripID %in% trips_to_fix & phase == "brooding", "incubation", phase))
+
+  ## Remove colony periods & any very short trips
+  my_gps %<>% filter(loc == "trip")
+  my_gps %<>% group_by(tripID) %>% mutate(n_locs = n()) %>% filter(n_locs > 6) %>% select(-n_locs) %>% ungroup()
+  
+  # Calculate average bearing from colony ------------
+   
+  trip_bearings <- my_gps %>% 
+     group_by(ID) %>%
+     arrange(datetime) %>%
+    ## Bearing from colony to each fix
+     mutate(bearing_col = bearing(
+                p1 = matrix(c(col_coords$longitude, col_coords$latitude), ncol = 2, byrow = TRUE),
+                p2 = matrix(c(longitude, latitude), ncol = 2)),
+    ## Mean bearing across the whole trip
+            bearing_avg = median.circular(circular(bearing_col, units = "degrees", template = "geographics"), na.rm = T),
+            species = strsplit(spec_col[i], "_")[[1]][1],
+            colony = strsplit(spec_col[i], "_")[[1]][2]) %>%
+    ungroup()
+  
+  # Isolate bearing per trip & calculate inter-trip distance
+  trip_bearings %<>%
+    mutate(boutID = paste0(season, "_", boutID)) %>%
+    select(c(ID, ring, season, phase, boutID, bearing_avg, datetime)) %>%
+    group_by(ring,season, boutID) %>%
+    slice(1) %>%
+    group_by(ring, season) %>%
+    mutate(time_since_first = as.numeric(difftime(datetime, min(datetime), units = "days"))) %>%
+    ungroup() %>%
+    select(c(ID, ring, season, phase, boutID, bearing_avg, time_since_first)) %>%
+    distinct()
+  
+  trip_bearings$species <- strsplit(spec_col[i], "_")[[1]][1]
+  trip_bearings$colony <- strsplit(spec_col[i], "_")[[1]][2]
+  
+  trip_bearings.list[[i]] <- trip_bearings
+
+}
+
+bearings.df <- do.call("rbind", trip_bearings.list)
+save(bearings.df, file = "Data/Processed/bearings_data.RData")
+
+```
+
+### Plot bearings from the colony
+
+```{r plot_bearings, fig.dim=c(16, 4.5)}
+
+load("Data/Processed/bearings_data.RData")
+
+bearings.df %<>% mutate(bearing_360 = ifelse(bearing_avg < 0, bearing_avg + 360, bearing_avg),
+                        spec_col = case_when(
+                            species == "bbal" & colony == "birdis" ~ "Black-browed albatrosses at Bird Island",
+                            species == "bbal" & colony == "ker" ~ "Black-browed albatrosses at Kerguelen",
+                            species == "waal" & colony == "birdis" ~ "Wandering albatrosses at Bird Island",
+                            species == "waal" & colony == "cro" ~ "Wandering albatrosses at Crozet"))
+breaks = seq(0, 360, 60)
+
+ggplot(bearings.df, aes(x = bearing_360)) +
+  geom_histogram(binwidth = 10,
+                 fill = "skyblue", color = "black", alpha = 0.7) + 
+  coord_polar(start = 0) +
+  scale_x_continuous("", limits = c(0, 360), 
+                     breaks = breaks, #c(0, 90, 180, 270), # breaks,
+                     labels = paste0(breaks, "\u00B0")) +#c("N", "E", "S", "W")) + # paste0(breaks, "\u00B0")) +
+  labs(y = "Frequency") +
+  #facet_grid(spec_col ~ ., scales="free") +
+  ggh4x::facet_grid2(. ~ spec_col, scales = "free_y", independent = "y") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 12, hjust = 0.5),
+        axis.ticks.y = element_line(color = "black"))
+
+
+  
+```
+
+### Estimate repeatability
+
+```{r rpt_bearings}
+
+load("Data/Processed/bearings_data.RData")
+
+bearings.df %<>% mutate(bearing_360 = ifelse(bearing_avg < 0, bearing_avg + 360, bearing_avg),
+                        spec_col = case_when(
+                            species == "bbal" & colony == "birdis" ~ "bbal_birdis",
+                            species == "bbal" & colony == "ker" ~ "bbal_ker",
+                            species == "waal" & colony == "birdis" ~ "waal_birdis",
+                            species == "waal" & colony == "cro" ~ "waal_cro"))
+
+# Convert degrees to radians
+bearings.df %<>%
+  mutate(bearing_rad = bearing_360 * pi / 180,
+         bearing_rad = ifelse(bearing_rad >= pi, bearing_rad - 2*pi, bearing_rad),
+         bearing_rad = ifelse(bearing_rad <= -pi, bearing_rad + 2*pi, bearing_rad))
+  
+## Add small value to avoid hitting pi exactly
+eps <- 1e-6
+bearings.df$bearing_rad <- pmin(pmax(bearings.df$bearing_rad, -pi + eps), pi - eps)
+
+# Add parameters for model - ring season, time since first
+bearings.df %<>% mutate(ring_season = paste0(ring, "_", season))
+
+## Define some weakly informative priors
+bearing_priors <- c(
+  prior(normal(0, 1), class = "Intercept", dpar = "mu"),      # mu intercept
+  prior(normal(0, 0.5), class = "b", dpar = "mu"),            # fixed effects
+  prior(exponential(1), class = "sd", dpar = "mu"),           # group-level SDs
+  prior(gamma(2, 0.01), class = "kappa")  # kappa intercept
+)
+
+spec_cols <- unique(bearings.df$spec_col)
+
+bearing_posteriors.list <- list()
+options(brms.backend = "cmdstanr")   
+
+for (i in 1:length(spec_cols)) {
+  
+  print(paste0("Processing ", i, "..."))
+  
+  my_df <- subset(bearings.df, spec_col == spec_cols[i])
+  
+  # Set formula
+  if(spec_col[i] == "waal_birdis") {
+  bearing_formula <- bf("bearing_rad ~ phase + (1 | season) + (1 | ring_season)") } else {
+    bearing_formula <- bf("bearing_rad ~ phase + (1 | season) + (1 | ring ) + (1 | ring_season)")  }
+  
+  # Fit model 
+  brm_vm <- brm(
+    formula = bearing_formula,
+    family  = von_mises(),  
+    data    = my_df,
+    prior   = bearing_priors,
+    chains = 4, cores = 4, iter = 8000, warmup = 4000,
+    control = list(max_treedepth = 15, adapt_delta = 0.99) )
+
+  # Calc repeatability
+  if(spec_col[i] == "waal_birdis") {
+    post_df <- calc_rpt_brms_VM_waBI(brm_vm) } else {
+      post_df <- calc_rpt_brms_VM(brm_vm)
+    }
+  
+  post_df %<>% mutate(spec_col = spec_col[i],
+                      species = my_df$species[1],
+                      colony = my_df$colony[1])
+  
+  mod_name <- paste0(spec_col[i], ".brm_rpt_bearings")
+  assign(mod_name, brm_vm)
+  
+  save(list = mod_name, file = paste0("Outputs/Models/", spec_col[i], "_brms_rpt_bearings.RData"))
+  
+  bearing_posteriors.list[[i]] <- post_df
+  
+}
+
+bearing_posteriors.df <- do.call("rbind", bearing_posteriors.list)
+save(bearing_posteriors.df, file = "Outputs/Posteriors/bearing_repeatability_posteriors.RData")
+
+```
+
+### Heritability of bearings
+
+```{r bearings_heritability}
+
+load("Outputs/Posteriors/bearing_repeatability_posteriors.RData")
+
+## Get trip ID
+bearings.df %<>%
+  separate(boutID, into = c("season", "trip1", "trip2"), sep = "_") %>%
+  mutate(tripID = paste0(ring, "_", season, "_", trip1, trip2)) %>%
+  ungroup() %>%
+  select(-c(ID, trip1, trip2))
+
+## Set weakly informative priors
+bearing_priors <- c(
+  prior(student_t(3, 0, 1), class = "Intercept", resp = "cosb"),
+  prior(student_t(3, -0.5, 1), class = "Intercept", resp = "sinb"),
+  prior(student_t(3, 0, 0.8), class = "sd", group = "ring", resp = "cosb"),
+  prior(student_t(3, 0, 0.8), class = "sd", group = "animal", resp = "cosb"),
+  prior(student_t(3, 0, 0.8), class = "sd", group = "ring", resp = "sinb"),
+  prior(student_t(3, 0, 0.8), class = "sd", group = "animal", resp = "sinb"),
+  prior(student_t(3, 0, 0.8), class = "sigma", resp = "cosb"),
+  prior(student_t(3, 0, 0.8), class = "sigma", resp = "sinb")
+)
+
+# Loop through species and colonies
+spec_col <- c("bbal_birdis", "waal_birdis", "waal_cro")
+posteriors = list()
+
+for (i in 1:length(spec_col)) {
+  
+  my_species <- strsplit(spec_col[i], "_")[[1]][1]
+  my_colony <- strsplit(spec_col[i], "_")[[1]][2]
+  
+  focal.bearings <- bearings.df %>% filter(species == my_species & colony == my_colony)
+  focal.bearings %<>% mutate(animal = ring, ring_pe = ring, ringSeason = paste0(ring, "_", season))
+
+  ## Convert to bearings to radians and create cos/sin
+  focal.bearings$bearing_rad <- (focal.bearings$bearing_avg %% 360) * pi / 180
+  focal.bearings$cos_b <- cos(focal.bearings$bearing_rad)
+  focal.bearings$sin_b <- sin(focal.bearings$bearing_rad)
+  
+  ## Restrict to birds with > 1 trip
+  focal.bearings %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips)
+  
+  # Build the pedigree ====
+  
+  pedigree.df <- read.csv(paste0("Data/Raw/", spec_col[i], "_pedigree.csv"))[,1:3]
+  pedigree.df[,c(1:3)] <- lapply(pedigree.df[,c(1:3)], as.character)
+  
+  Amat <- make_Amat(focal.bearings, pedigree.df)
+  
+  # Build the model ====
+  
+  ## Set formula
+  if(spec_col[i] == "waal_birdis") {
+  mv_formula <- bf(mvbind(cos_b, sin_b) ~ 1 +  (1 | gr(animal, cov = Amat)) + (1 | ring) + (1 | season)) } else {
+    mv_formula <- bf(mvbind(cos_b, sin_b) ~ 1 + phase + (1 | gr(animal, cov = Amat)) + (1 | ring) + (1 | ringSeason) + (1 | season))  }
+
+  brm_bearing_heritability <- brm(
+    formula = mv_formula,
+    prior = bearing_priors,
+    data = focal.bearings,
+    data2 = list(Amat = Amat),
+    family = gaussian(),
+    chains = 4, cores = 4, iter = 8000, warmup = 4000,
+    control = list(max_treedepth = 15, adapt_delta = 0.99))
+
+  #plot(brm_bearing_heritability)  
+  save(brm_bearing_heritability, file = paste0("Outputs/Models/", spec_col[i], "_bearing_heritability.RData"))
+ 
+  # Calculate h2 ====
+  draws <- as_draws_df(brm_bearing_heritability)
+  
+  ## Get variance components
+  VA <- extractVar(draws, "animal")
+  Vring <- extractVar(draws, "ring")
+  if(spec_col[i] != "waal_birdis") { VringSeason <- extractVar(draws, "ringSeason") }
+  Vseason <- extractVar(draws, "season")
+  VR <- draws$sigma_cosb^2 + draws$sigma_sinb^2
+
+  ## Calculate total phenotypic variance 
+  if(spec_col[i] == "waal_birdis") { VP <- VA + Vring + Vseason + VR } else {
+  VP <- VA + Vring + VR }
+
+  ## Calculate h2
+  h2 <- VA / VP
+
+  posteriors[[i]] <- data.frame(species = my_species,
+                           colony = my_colony,
+                           h2 = h2)
+  
+}
+
+posteriors_all <- do_call("rbind", posteriors)
+
+posteriors_all %<>%
+  mutate(spec_col = case_when(
+      species == "bbal" ~ "BBAL Bird Island",
+      species == "waal" & colony == "birdis" ~ "WAAL Bird Island",
+      TRUE ~ "WAAL Crozet"),
+      spec_col = factor(spec_col, levels = rev(unique(spec_col))))
+
+save(posteriors_all, file = "Outputs/Posteriors/bearing_heritability_posteriors.RData")
+
+```
+
+## Bhattacharyya's Affinity
+
+```{r prep_BA_data, eval = FALSE}
+
+# Set parameters
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
+
+for (i in 1:length(spec_col)) {
+  
+  my_file <- list.files("Data/Intermediate/", pattern = paste0(spec_col[i], "_gps_labelled"))
+  
+  my_gps <- loadRData(paste0("Data/Intermediate/", my_file)) 
+  species <- strsplit(spec_col[i], "_")[[1]][1]
+  colony <- strsplit(spec_col[i], "_")[[1]][2]
+ 
+  # Remove colony periods & any very short trips
+  my_gps %<>% filter(loc == "trip")
+  my_gps %<>% group_by(tripID) %>% mutate(n_locs = n(), max_dist = max(dist_col)/1000) %>% 
+    filter(n_locs > 20 & max_dist > 65) %>% select(-c(n_locs, max_dist)) %>% ungroup()
+  
+  ## Remove birds with only one trip
+  # my_gps %<>% group_by(ring) %>% mutate(n_trips = n_distinct(tripID)) %>% filter(n_trips > 1) %>% select(-n_trips) %>% ungroup()
+  
+  ## Correct issues with breeding phase
+  trips_to_fix <- my_gps %>%
+    group_by(tripID) %>%
+    summarise(n_phases = n_distinct(phase)) %>%
+    filter(n_phases > 1) %>%
+    pull(tripID)
+  
+  my_gps %<>% mutate(phase = if_else(tripID %in% trips_to_fix & phase == "brooding", "incubation", phase))
+  
+  # Get start times look-up
+  trip_starts <- my_gps %>%
+    mutate(tripID = paste(season, "_", boutID)) %>%
+    group_by(ring, tripID) %>%
+    summarise(start_time = min(datetime), .groups = "drop")
+  
+  ### Meta for phase comparisons later
+  my_meta <- my_gps %>%
+    group_by(ID) %>%
+    select(c(ring, season, boutID, ID, phase)) %>%
+    distinct()
+
+  # Generate all possible trip combinations 
+  trip_combinations <- combn(unique(my_gps$ID), 2, simplify = FALSE)
+  trip_combinations.df <- data.frame(do.call("rbind", trip_combinations))
+  colnames(trip_combinations.df) <- c("tripID_1", "tripID_2")
+
+  # Plotting out some UDs ----
+  
+  # birds <- unique(my_gps$ring)
+  # 
+  # for (b in 1:length(birds)) {
+  # 
+  #   # Get focal bird
+  #   ud.df_A <- subset(my_gps, ring == birds[b]) %>% select(tripID, longitude, latitude)
+  #   ud.sp_A <- SpatialPointsDataFrame(coords = ud.df_A[, c("longitude", "latitude")],
+  #                                data = data.frame(id = ud.df_A$tripID))
+  #   ud.est_A <- kernelUD(ud.sp_A[, 1], h = "href", extent = 3, grid = 500)
+  #   ud.95_A <- getverticeshr(ud.est_A, percent = 95)
+  # 
+  #   ud_sf_A <- st_as_sf(ud.95_A)
+  #   ud_sf_A %<>% separate(id, sep = "_", into = c("ring", "season", "dummy", "tripNo")) %>% select(-dummy)
+  # 
+  #   # Random bird
+  #   ud.df_B <- subset(my_gps, ring == birds[sample(length(birds), 1)]) %>% select(tripID, longitude, latitude)
+  #   ud.sp_B <- SpatialPointsDataFrame(coords = ud.df_B[, c("longitude", "latitude")],
+  #                                data = data.frame(id = ud.df_B$tripID))
+  #   ud.est_B <- kernelUD(ud.sp_B[, 1], h = "href", extent = 3, grid = 500)
+  #   ud.95_B <- getverticeshr(ud.est_B, percent = 95)
+  # 
+  #   ud_sf_B <- st_as_sf(ud.95_B)
+  #   ud_sf_B %<>% separate(id, sep = "_", into = c("ring", "season", "dummy", "tripNo")) %>% select(-dummy)
+  # 
+  #   ud_plot <- ggplot() +
+  #     geom_sf(data = ud_sf_A, fill = "blue", alpha = 0.4) +
+  #     geom_sf(data = ud_sf_B, fill = "red", alpha = 0.4) +
+  #     theme_bw()
+  # 
+  #   png(file = paste0("Outputs/Figures/", spec_col[i], "_", birds[b], "_", ud_sf_B$ring[1], ".png"))
+  #   print(ud_plot)
+  #   dev.off()
+  # }
+  
+  # ===# WITHIN INDIVIUDAL ====
+  
+  # Find the combinations by filtering to same rings and same phase
+  ba_within.df <- trip_combinations.df %>%
+     mutate(ring_1 = sub("_.*", "", tripID_1),
+           ring_2 = sub("_.*", "", tripID_2)) %>%
+    filter(ring_1 == ring_2) %>%
+    select(-c(ring_1, ring_2)) %>%
+    # Ensure comparisons are within same phase
+    left_join(my_meta %>% select(ID, phase) %>% 
+              rename(tripID_1 = ID),
+            by = "tripID_1") %>%
+    rename(phase_1 = phase) %>%
+    left_join(my_meta %>% select(ID, phase) %>% 
+                rename(tripID_2 = ID),
+              by = "tripID_2") %>%
+    rename(phase_2 = phase) %>%
+    mutate(phase_comp = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")) %>%
+    filter(phase_comp == "same_phase") %>%
+    select(-c(phase_comp, phase_1, phase_2))
+
+  ## Calculate the comparisons (slow!)
+  ba_within.list <- vector(mode = "list", length = nrow(ba_within.df))
+  pb <- txtProgressBar(min = 0, max = nrow(ba_within.df), style = 3)
+  
+  for (j in 1:nrow(ba_within.df)) {
+    
+    setTxtProgressBar(pb, j)
+    
+    # Subset data for both trips
+    trip1 <- subset(my_gps, ID == ba_within.df$tripID_1[j])
+    trip1.stt <- min(trip1$datetime)
+    trip2 <- subset(my_gps, ID == ba_within.df$tripID_2[j])
+    trip2.stt <- min(trip2$datetime)
+    
+    # Combine trips and factorize ID
+    both_trips <- rbind(trip1, trip2) 
+    both_trips %<>% 
+      mutate(id = as.factor(both_trips$tripID)) %>%
+      select(c(longitude, latitude, id))
+    
+    # Convert to SpatialPointsDataFrame
+    coordinates(both_trips) <- ~longitude + latitude
+    proj4string(both_trips) <- CRS(proj.dec)
+    
+    # Get bounding box
+    bb <- bbox(both_trips)
+
+    ## Define a raster grid extent slightly larger than the bounding box
+    xrange <- bb[1, 2] - bb[1, 1]
+    yrange <- bb[2, 2] - bb[2, 1]
+
+    ## Expand the bounding box slightly (e.g. 20% buffer)
+    bb_expanded <- bb
+    bb_expanded[1, ] <- bb[1, ] + c(-0.1 * xrange, 0.1 * xrange)
+    bb_expanded[2, ] <- bb[2, ] + c(-0.1 * yrange, 0.1 * yrange)
+
+    # Get the UDs
+    ud <- kernelUD(both_trips, h = "href", grid = 100, extent = 0, kern = "bivnorm", same4all = TRUE)
+
+    # Calculate UD overlap — Bhattacharyya’s affinity
+    overlap_val <- kerneloverlaphr(ud, method = "BA", percent = 95)[1,2]
+
+    # Output
+    output <- data.frame(trip1 = ba_within.df$tripID_1[j],
+                         trip2 = ba_within.df$tripID_2[j],
+                         ba_val = overlap_val,
+                         inter_obs_dist = abs(as.numeric(difftime(trip1.stt, trip2.stt, units = "days"))))
+  
+    ba_within.list[[j]] <- output 
+    
+  }
+  
+  close(pb)
+
+  ## Bind up the output
+  ba_within.output <- do.call("rbind", ba_within.list)
+  
+  ba_within.output %<>% 
+    separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1"), sep = "_") %>%
+    separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2"), sep = "_") %>%
+    select(-loc) %>%
+    mutate(tripID_1 = paste0("trip_", tripID_1),
+           tripID_2 = paste0("trip_", tripID_2),
+           comp_ind = "within_ring",
+           comp_season = ifelse(season_1 == season_2, "within_season", "between_season"))
+
+  rm(ba_within.df); rm(ba_within.list)
+  gc()
+  
+  # ===# BETWEEN INDIVIUDAL ====
+  
+  set.seed(817)
+  
+  # Downsample the between dataset to match within 
+  n_within_between = nrow(ba_within.output %>% filter(comp_season == "between_season"))
+  n_within_within = nrow(ba_within.output %>% filter(comp_season == "within_season"))
+  
+  ba_between_between.df <- trip_combinations.df %>%
+    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1"), remove = FALSE) %>%
+    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2"), remove = FALSE) %>%
+    filter(ring1 != ring2) %>%
+    filter(season1 != season2) %>%
+    select(c(tripID_1, tripID_2)) %>%
+    # Get phase and filter for same breeding phase
+    left_join(my_meta %>% select(ID, phase) %>% 
+              rename(tripID_1 = ID), by = "tripID_1") %>%
+    rename(phase_1 = phase) %>%
+    left_join(my_meta %>% select(ID, phase) %>% 
+                rename(tripID_2 = ID), by = "tripID_2") %>%
+    rename(phase_2 = phase) %>%
+    mutate(phase_comp = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")) %>%
+    filter(phase_comp == "same_phase") %>%
+    select(-c(phase_comp, phase_1, phase_2)) %>%
+    sample_n(size = n_within_between, replace = FALSE)
+  
+  
+  ba_between_within.df <- trip_combinations.df %>%
+    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1"), remove = FALSE) %>%
+    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2"), remove = FALSE) %>%
+    filter(ring1 != ring2) %>%
+    filter(season1 == season2) %>%
+    select(c(tripID_1, tripID_2)) %>%
+    # Get phase and filter for same breeding phase
+    left_join(my_meta %>% select(ID, phase) %>% 
+                rename(tripID_1 = ID), by = "tripID_1") %>%
+    rename(phase_1 = phase) %>%
+    left_join(my_meta %>% select(ID, phase) %>% 
+                rename(tripID_2 = ID), by = "tripID_2") %>%
+    rename(phase_2 = phase) %>%
+    mutate(phase_comp = ifelse(phase_1 == phase_2, "same_phase", "diff_phase")) %>%
+    filter(phase_comp == "same_phase") %>%
+    select(-c(phase_comp, phase_1, phase_2)) %>%
+    sample_n(size = n_within_within, replace = FALSE)
+
+  ba_between <- rbind(ba_between_between.df, ba_between_within.df)
+  
+  ## Calculate the comparisons
+  ba_between.list <- vector(mode = "list", length = nrow(ba_between))
+  pb <- txtProgressBar(min = 0, max = nrow(ba_between), style = 3)
+  
+  for (k in 1:nrow(ba_between)) {
+    
+    setTxtProgressBar(pb, k)
+    
+    # Subset data for both trips
+    trip1 <- subset(my_gps, ID == ba_between$tripID_1[k])
+    trip1.stt <- min(trip1$datetime)
+    trip2 <- subset(my_gps, ID == ba_between$tripID_2[k])
+    trip2.stt <- min(trip2$datetime) 
+    
+    # Combine trips and factorize ID
+    both_trips <- rbind(trip1, trip2) 
+    both_trips %<>% 
+      mutate(id = as.factor(both_trips$tripID)) %>%
+      select(c(longitude, latitude, id))
+    
+    # Convert to SpatialPointsDataFrame
+    coordinates(both_trips) <- ~longitude + latitude
+    proj4string(both_trips) <- CRS(proj.dec)
+    
+    # Get bounding box
+    bb <- bbox(both_trips)
+
+    ## Define a raster grid extent slightly larger than the bounding box
+    xrange <- bb[1, 2] - bb[1, 1]
+    yrange <- bb[2, 2] - bb[2, 1]
+
+    ## Expand the bounding box slightly (e.g. 20% buffer)
+    bb_expanded <- bb
+    bb_expanded[1, ] <- bb[1, ] + c(-0.1 * xrange, 0.1 * xrange)
+    bb_expanded[2, ] <- bb[2, ] + c(-0.1 * yrange, 0.1 * yrange)
+
+    # Get the UDs
+    ud <- kernelUD(both_trips, h = "href", grid = 100, extent = 0, kern = "bivnorm", same4all = TRUE)
+
+    # Calculate UD overlap — Bhattacharyya’s affinity
+    overlap_val <- kerneloverlaphr(ud, method = "BA", percent = 95)[1,2]
+
+    # Output
+    output <- data.frame(trip1 = ba_between$tripID_1[k],
+                         trip2 = ba_between$tripID_2[k],
+                         ba_val = overlap_val,
+                         inter_obs_dist = abs(as.numeric(difftime(trip1.stt, trip2.stt, units = "days"))))
+  
+    ba_between.list[[k]] <- output 
+    
+  }
+  
+  close(pb)
+
+  ba_between.output <- do.call("rbind", ba_between.list)
+  
+  ba_between.output %<>% 
+    separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1"), sep = "_") %>%
+    separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2"), sep = "_") %>%
+    select(-loc) %>%
+    mutate(tripID_1 = paste0("trip_", tripID_1),
+           tripID_2 = paste0("trip_", tripID_2),
+           comp_ind = "between_ring",
+           comp_season = ifelse(season_1 == season_2, "within_season", "between_season"))
+  
+  # Bind the two dataframes together
+  ba.df <- rbind(ba_within.output, ba_between.output)
+  
+  save(ba.df, file = paste0("Data/Processed/", species, "_", colony, "_ba_comparison.RData"))
+  
+  rm(ba.df); rm(ba_within.output); rm(ba_between.list); rm(ba_between.output)
+  gc()
+
+}
+  
+```
+
+### Modelling BA differences
+
+```{r model_ba_differences, eval = FALSE}
+
+# Species-colony combinations
+spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
+
+# Output containers
+ba_summary.list <- list()
+ba_means.list <- list()
+
+for (i in seq_along(spec_col)) {
+  
+  # Load data and prep species/colony labels
+  load(paste0("Data/Processed/", spec_col[i], "_ba_comparison.RData"))
+  species <- strsplit(spec_col[i], "_")[[1]][1]
+  colony <- strsplit(spec_col[i], "_")[[1]][2]
+  meta_info <- tibble(species, colony)
+  
+  # Make dyad ID and subsample to ensure each comparison appears only once (circumvents random effects issues)
+  set.seed(817) 
+  
+  ba.df %<>%
+    mutate(ring_season_1 = paste(ring_1, season_1, sep = "_"),
+           ring_season_2 = paste(ring_2, season_2, sep = "_"),
+           dyad = if_else(ring_season_1 < ring_season_2,
+                          paste(ring_season_1, ring_season_2, sep = "_"),
+                          paste(ring_season_2, ring_season_1, sep = "_"))) %>%
+    group_by(dyad) %>%
+    slice_sample(n = 1) %>%
+    ungroup() %>%
+    select(-c(ring_season_1, ring_season_2))
+  
+  ## Relevel factors for comparison
+  ba.df %<>% mutate(comp_ind = as.factor(comp_ind), comp_season = as.factor(comp_season))
+  
+  ba.df$comp_ind <- relevel(ba.df$comp_ind, ref = "within_ring")
+  ba.df$comp_season <- relevel(ba.df$comp_season, ref = "within_season")
+
+  ## Add small constant to handle 0 values
+  n <- nrow(ba.df)
+  ba.df$ba_val <- (ba.df$ba_val * (n - 1) + 0.5) / n
+  
+  ## Remove within ind, within season component for WAAL Bird IS
+  if(i == 3) { 
+    ba.df %<>% filter(!(comp_ind == "within_ring" & comp_season == "between_season"))
+    ba.df <- droplevels(ba.df)
+    
+    m1 <- betareg(ba_val ~ comp_ind + comp_season + inter_obs_dist, data = ba.df) } else {
+        m1 <- betareg(ba_val ~ comp_ind * comp_season + inter_obs_dist, data = ba.df)
+    }
+ 
+  ## Diagnostics
+  # plot(m1, resid(., scaled=TRUE) ~ fitted(.), abline = 0)
+  # qqnorm(resid(m1))
+  # qqline(resid(m1))
+  # hist(resid(m1), breaks = 50, main = "Histogram of residuals")
+
+  ## Extract outputs
+  m1_em <- data.frame(emmeans(m1, ~comp_ind*comp_season, pbkrtest.limit = 7000)) %>%
+    mutate(species = species, colony = colony,
+           comp_ind = factor(comp_ind, levels = c("within_ring", "between_ring"))) %>%
+    relocate(c(species, colony), .before = comp_ind) %>%
+    arrange(comp_ind)
+  
+  m1_em.comp_ind <- data.frame(emmeans(m1, ~comp_ind, pbkrtest.limit = 7000)) %>%
+    mutate(species = species, colony = colony,
+           comp_ind = factor(comp_ind, levels = c("within_ring", "between_ring")),
+           comp_season = NA) %>%
+    relocate(c(species, colony), .before = comp_ind) %>%
+    arrange(comp_ind)
+  
+  m1_em.comp_season <- data.frame(emmeans(m1, ~comp_season, pbkrtest.limit = 7000)) %>%
+    mutate(species = species, colony = colony,
+           comp_ind = NA) %>%
+    relocate(c(species, colony), .before = comp_season) %>%
+    arrange(comp_season)
+
+  m1_em <- rbind(m1_em, m1_em.comp_ind, m1_em.comp_season)
+  m1_out <- extract_output.lm(m1) %>% mutate(species = species, colony = colony) %>% relocate(c(species, colony), .before = Term)
+  
+  # Store results
+  ba_summary.list[[i]] <- m1_out
+  ba_means.list[[i]] <- m1_em
+  
+}
+
+# Combine and save
+ba_summary <- bind_rows(ba_summary.list)
+ba_means   <- bind_rows(ba_means.list)
+
+save(ba_summary, file = "Outputs/Posteriors/ba_model_summary.RData")
+save(ba_means,   file = "Outputs/Posteriors/ba_means.RData")
+
+```
+
