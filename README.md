@@ -59,6 +59,8 @@ A short description of each script is given below. Briefly, the workflow is as f
 3.  Sample points for habitat analyses and add environmental variables;
 4.  Run analyses.
 
+Each script sources the file `0_setup.R`, which creates the required directories if they do not already exist, loads custom functions, and applies project-specific configuration.
+
 ### R/Functions
 
 -   **RPT_functions.R**: Contains custom functions used throughout the workflow for data processing, behavioural extraction, habitat sampling, and repeatability analyses. This script is sourced by other R and RMarkdown scripts as needed.
