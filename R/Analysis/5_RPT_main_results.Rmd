@@ -97,7 +97,7 @@ for (i in 1:length(spec_col)) {
 }
 
 all_gps.df <- do.call("rbind", all_gps)
-save(all_gps.df, file = "Data/Processed/all_gps_data.RData")
+save(all_gps.df, file = "Data/Temporary/all_gps_data.RData")
 
 # Get the base world plot
 world <- ne_countries(scale = "medium", returnclass = "sf")
@@ -609,7 +609,7 @@ knitr::kable(ba_summary, format = "html",
 
 ```{r figs4_example_gps_plots, fig.height=8, fig.width=10}
 
-load("Data/Processed/all_gps_data.RData")
+load("Data/Temporary/all_gps_data.RData")
 
 # Common parameters
 proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
