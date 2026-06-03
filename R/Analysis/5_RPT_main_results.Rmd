@@ -29,10 +29,10 @@ _ggpubr(v.0.6.3)_, _stringr(v.1.6.0)_, _kableExtra(v.1.4.0)_, _tidyr(v.1.3.2)_, 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
+source("R/0_setup.R")
+
 # Define & load the packages
 packages <- c("dplyr", "magrittr", "ggplot2", "ggridges", "gridExtra", "tidyr", "kableExtra", "stringr", "ggpubr") 
-
-source("R/Functions/RPT_functions.R")
 
 # Install packages not yet installed - change lib to library path
 # installed_packages <- packages %in% rownames(installed.packages())
@@ -42,12 +42,6 @@ source("R/Functions/RPT_functions.R")
 # }
 
 invisible(lapply(packages, library, character.only = TRUE))
-
-## Suppress dplyr summarise warning
-options(dplyr.summarise.inform = FALSE)
-
-## Make sure using dplyr select
-select <- dplyr::select
 
 ## Set colours
 col_Across <- "#91c5f2"

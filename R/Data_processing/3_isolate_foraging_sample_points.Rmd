@@ -43,6 +43,8 @@ _adehabitatHR(v.0.4.22)_, _adehabitatLT(v.0.3.28)_, _CircStats(v.0.2-7)_, _boot(
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
+source("R/0_setup.R")
+
 # Define the packages
 packages <- c("dplyr", "magrittr", "ggplot2", "tidyr",
               "momentuHMM", "sf", "lubridate", "terra", "raster",
@@ -57,13 +59,6 @@ packages <- c("dplyr", "magrittr", "ggplot2", "tidyr",
 
 # Load packages
 invisible(lapply(packages, library, character.only = TRUE))
-
-source("R/Functions/RPT_functions.R")
-
-
-# Suppress dplyr summarise warning
-options(dplyr.summarise.inform = FALSE)
-select <- dplyr::select
 
 ```
 

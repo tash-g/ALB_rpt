@@ -74,9 +74,7 @@ loadRData <- function(fileName){
 }
 
 
-scale_2SD <- function(x) {
-  as.numeric((x - mean(x, na.rm = TRUE)) / (2 * sd(x, na.rm = TRUE)))
-}
+scale_2SD <- function(variable) { (variable - mean(variable, na.rm = TRUE)) / sd(variable, na.rm = TRUE) * 2 }
 
 
 # * HABITAT PREFERENCE FUNCTIONS * ----------------------------------------

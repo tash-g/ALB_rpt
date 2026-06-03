@@ -31,8 +31,7 @@ _MasterBayes(v.2.59)_, _kinship2(v.1.9.6.2)_, _quadprog(v.1.5-8)_, _genetics(v.1
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
-# Functions for GPS processing and plotting
-source("R/Functions/RPT_functions.R")
+source("R/0_setup.R")
 
 # Define the packages
 packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "kableExtra", "stringr", "glmmTMB", "ggridges", "brms", "MCMCglmm", "igraph", "MasterBayes")
@@ -40,11 +39,6 @@ packages <- c("dplyr", "magrittr", "ggplot2", "lme4",  "gridExtra", "tidyr", "ka
 # Load packages
 invisible(lapply(packages, library, character.only = TRUE))
 
-# Suppress dplyr summarise warning
-options(dplyr.summarise.inform = FALSE)
-
-# Make sure using dplyr select
-select <- dplyr::select
 
 # Set colours
 col_between <- "#91c5f2"

@@ -32,9 +32,7 @@ _nadiv(v.2.18.0)_, _pheatmap(v.1.0.13)_, _MasterBayes(v.2.59)_, _kinship2(v.1.9.
 ```{r setup_packages_functions, include = FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
-# Functions for GPS processing and plotting
-source("R/Functions/RPT_functions.R")
-source("R/Functions/condR.R")
+source("R/0_setup.R")
 
 ## MasterBayes installation
 # install.packages(c('genetics', 'gtools', 'kinship2'))
@@ -51,15 +49,8 @@ packages <- c("dplyr", "magrittr", "ggplot2", "lme4", "tidyr", "lubridate", "DHA
 # }
 
 invisible(lapply(packages, library, character.only = TRUE))
+source("R/Functions/condR.R")
 
-# Suppress dplyr summarise warning
-options(dplyr.summarise.inform = FALSE)
-
-# Make sure using dplyr select
-select <- dplyr::select
-
-# Scale function
-scale_2SD <- function(variable) { (variable - mean(variable, na.rm = TRUE)) / sd(variable, na.rm = TRUE) * 2 }
 
 ```
 

@@ -41,6 +41,8 @@ _data.table(v.1.18.2.1)_, _ggplot2(v.4.0.2)_, _magrittr(v.2.0.3)_ and _dplyr(v.1
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, eval = FALSE)
 
+source("R/0_setup.R")
+
 # Define the packages
 packages <- c("dplyr", "magrittr", "readxl", "ggplot2", "data.table", "tidyr")
 
@@ -53,13 +55,6 @@ packages <- c("dplyr", "magrittr", "readxl", "ggplot2", "data.table", "tidyr")
 
 # Load packages
 invisible(lapply(packages, library, character.only = TRUE))
-
-source("R/Functions/RPT_functions.R")
-
-
-# Suppress dplyr summarise warning
-options(dplyr.summarise.inform = FALSE)
-select <- dplyr::select
 
 ```
 
