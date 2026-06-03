@@ -124,7 +124,7 @@ for (i in 1:length(spec_col)) {
     group_by(ring, season) %>%
     mutate(time_since_first = as.numeric(difftime(datetime, min(datetime), units = "days"))) %>%
     ungroup() %>%
-    select(c(ID, ring, season, phase, boutID, bearing_avg, time_since_first)) %>%
+    select(c(ring, season, phase, boutID, bearing_avg, time_since_first)) %>%
     distinct()
   
   trip_bearings$species <- strsplit(spec_col[i], "_")[[1]][1]

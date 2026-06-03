@@ -446,7 +446,7 @@ process_habitat_data <- function(df, avail_ratio, min_recs_per_trip) {
     mutate(raw_trip = gsub("_", "", tripID),
            ID_season = paste(ID, season, sep = "_"),
            tripID = paste(ID, season, raw_trip, sep = "_")) %>%
-    select(-index, -raw_trip) %>%
+    select(-c(index, raw_trip, sex)) %>%
     
     # Resample to maintain used:available ratio
     group_by(tripID, date_hourly) %>%
@@ -478,9 +478,7 @@ process_habitat_data <- function(df, avail_ratio, min_recs_per_trip) {
       sst_scaled      = scale_2SD(SST),
       bathy_scaled    = scale_2SD(bathy),
       chl_scaled      = scale_2SD(chlA),
-      dist_col_scaled = scale_2SD(dist_col),
-      sst_scaled2     = sst_scaled^2,
-      bathy_scaled2   = bathy_scaled^2 )
+      dist_col_scaled = scale_2SD(dist_col) )
   
   return(df_clean)
 }
