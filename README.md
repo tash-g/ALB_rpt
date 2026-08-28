@@ -14,7 +14,7 @@ Consistency and heritability of foraging traits in albatrosses suggest spatial f
 
 -   Platform: x86_64-w64-mingw32 (Windows)
 
--   Package dependencies are managed using `renv`. The full set of package versions used in the analyses is recorded in renv.lock and can be restored with: `renv::restore()`. Each R script contains a list of attached packages as part of the 'Session info' section at the start of the file.
+-   Each R script contains a list of attached packages as part of the 'Session info' section at the start of the file.
 
 ## File structure
 

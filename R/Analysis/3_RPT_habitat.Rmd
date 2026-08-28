@@ -1,5 +1,5 @@
 ---
-title: "Habitat selection analyses"
+title: "Habitat use analyses"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:

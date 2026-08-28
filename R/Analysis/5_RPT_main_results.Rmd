@@ -433,7 +433,7 @@ bearings_rpt.summary %<>%
       waal_cro = "WAAL Crozet"),
       behaviour = "Foraging bearing") %>%
   arrange(spec_col) %>%
-  mutate(spec_col = factor(spec_col, levels = rev(unique(spec_col))))
+  mutate(spec_col = factor(spec_col, levels = unique(spec_col)))
 
 bearings_rpt.plot <- ggplot(bearings_rpt.summary, aes(x = median_val, y = behaviour, colour = repeatability_type)) +
   geom_point(position = position_dodge(width = 0.6), size = 3) +
@@ -559,9 +559,9 @@ ba_summary %<>%
       ifelse(colony == "cro", "Crozet", "Kerguelen")),
     Term = case_when(
       Term == "(Intercept)" ~ "Intercept",
-      Term == "comp_seasonAcross_season" ~ "Across seasons",
-      Term == "comp_indAcross_ring" ~ "Among individuals",
-      Term == "comp_indAcross_ring:comp_seasonAcross_season" ~ "Among individuals * Across seasons",
+      Term == "comp_seasonbetween_season" ~ "Across seasons",
+      Term == "comp_indbetween_ring" ~ "Among individuals",
+      Term == "comp_indbetween_ring:comp_seasonbetween_season" ~ "Among individuals * Across seasons",
       TRUE ~ "Inter-observation distance"),
     Estimate = paste0(
       format_numbers(Estimate),

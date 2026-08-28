@@ -365,6 +365,17 @@ save(posteriors_all, file = "Outputs/Posteriors/bearing_heritability_posteriors.
 
 ```{r prep_BA_data, eval = FALSE}
 
+# Load metadata for within-sex comparisons
+load("Data/Metadata/ind_meta.RData")
+all_ind.meta %<>% select(c(ring, sex, species))
+
+## Set ambiguous sexes to NA
+all_ind.meta %<>%
+  group_by(ring) %>%
+  mutate(sex = if (n() > 1) NA else sex) %>%
+  distinct(ring, .keep_all = TRUE) %>%
+  ungroup()
+
 # Set parameters
 spec_col <- c("bbal_birdis", "bbal_ker", "waal_birdis", "waal_cro")
 proj.dec <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"
@@ -394,6 +405,19 @@ for (i in 1:length(spec_col)) {
   
   my_gps %<>% mutate(phase = if_else(tripID %in% trips_to_fix & phase == "brooding", "incubation", phase))
   
+  # Integrate sex
+  if(grepl("bbal", spec_col[i])) {
+    my_meta <- all_ind.meta %>% filter(species == "BBA") %>% select(-species)
+  } else {
+    my_meta <- all_ind.meta %>% filter(species == "WAAL") %>% select(-species)
+  }
+  
+  my_gps %<>% left_join(my_meta, by = "ring") 
+  rm(my_meta)
+
+  ## Add sex to my_gps$id for comparisons
+  my_gps$ID <- paste0(my_gps$ID, "_", my_gps$sex)
+  
   # Get start times look-up
   trip_starts <- my_gps %>%
     mutate(tripID = paste(season, "_", boutID)) %>%
@@ -411,42 +435,6 @@ for (i in 1:length(spec_col)) {
   trip_combinations.df <- data.frame(do.call("rbind", trip_combinations))
   colnames(trip_combinations.df) <- c("tripID_1", "tripID_2")
 
-  # Plotting out some UDs ----
-  
-  # birds <- unique(my_gps$ring)
-  # 
-  # for (b in 1:length(birds)) {
-  # 
-  #   # Get focal bird
-  #   ud.df_A <- subset(my_gps, ring == birds[b]) %>% select(tripID, longitude, latitude)
-  #   ud.sp_A <- SpatialPointsDataFrame(coords = ud.df_A[, c("longitude", "latitude")],
-  #                                data = data.frame(id = ud.df_A$tripID))
-  #   ud.est_A <- kernelUD(ud.sp_A[, 1], h = "href", extent = 3, grid = 500)
-  #   ud.95_A <- getverticeshr(ud.est_A, percent = 95)
-  # 
-  #   ud_sf_A <- st_as_sf(ud.95_A)
-  #   ud_sf_A %<>% separate(id, sep = "_", into = c("ring", "season", "dummy", "tripNo")) %>% select(-dummy)
-  # 
-  #   # Random bird
-  #   ud.df_B <- subset(my_gps, ring == birds[sample(length(birds), 1)]) %>% select(tripID, longitude, latitude)
-  #   ud.sp_B <- SpatialPointsDataFrame(coords = ud.df_B[, c("longitude", "latitude")],
-  #                                data = data.frame(id = ud.df_B$tripID))
-  #   ud.est_B <- kernelUD(ud.sp_B[, 1], h = "href", extent = 3, grid = 500)
-  #   ud.95_B <- getverticeshr(ud.est_B, percent = 95)
-  # 
-  #   ud_sf_B <- st_as_sf(ud.95_B)
-  #   ud_sf_B %<>% separate(id, sep = "_", into = c("ring", "season", "dummy", "tripNo")) %>% select(-dummy)
-  # 
-  #   ud_plot <- ggplot() +
-  #     geom_sf(data = ud_sf_A, fill = "blue", alpha = 0.4) +
-  #     geom_sf(data = ud_sf_B, fill = "red", alpha = 0.4) +
-  #     theme_bw()
-  # 
-  #   png(file = paste0("Outputs/Figures/", spec_col[i], "_", birds[b], "_", ud_sf_B$ring[1], ".png"))
-  #   print(ud_plot)
-  #   dev.off()
-  # }
-  
   # ===# WITHIN INDIVIUDAL ====
   
   # Find the combinations by filtering to same rings and same phase
@@ -526,9 +514,9 @@ for (i in 1:length(spec_col)) {
   ba_within.output <- do.call("rbind", ba_within.list)
   
   ba_within.output %<>% 
-    separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1"), sep = "_") %>%
-    separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2"), sep = "_") %>%
-    select(-loc) %>%
+    separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1", "sex1"), sep = "_") %>%
+    separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2", "sex2"), sep = "_") %>%
+    select(-c(loc, sex1, sex2)) %>%
     mutate(tripID_1 = paste0("trip_", tripID_1),
            tripID_2 = paste0("trip_", tripID_2),
            comp_ind = "within_ring",
@@ -546,8 +534,9 @@ for (i in 1:length(spec_col)) {
   n_within_within = nrow(ba_within.output %>% filter(comp_season == "within_season"))
   
   ba_between_between.df <- trip_combinations.df %>%
-    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1"), remove = FALSE) %>%
-    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2"), remove = FALSE) %>%
+    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1", "sex1"), remove = FALSE) %>%
+    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2", "sex2"), remove = FALSE) %>%
+    filter(sex1 == sex2) %>%
     filter(ring1 != ring2) %>%
     filter(season1 != season2) %>%
     select(c(tripID_1, tripID_2)) %>%
@@ -565,8 +554,9 @@ for (i in 1:length(spec_col)) {
   
   
   ba_between_within.df <- trip_combinations.df %>%
-    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1"), remove = FALSE) %>%
-    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2"), remove = FALSE) %>%
+    separate(tripID_1, into = c("ring1", "season1", "dummy1", "trip1", "sex1"), remove = FALSE) %>%
+    separate(tripID_2, into = c("ring2", "season2", "dummy2", "trip2", "sex2"), remove = FALSE) %>%
+    filter(sex1 == sex2) %>%
     filter(ring1 != ring2) %>%
     filter(season1 == season2) %>%
     select(c(tripID_1, tripID_2)) %>%
@@ -641,9 +631,9 @@ for (i in 1:length(spec_col)) {
   ba_between.output <- do.call("rbind", ba_between.list)
   
   ba_between.output %<>% 
-    separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1"), sep = "_") %>%
-    separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2"), sep = "_") %>%
-    select(-loc) %>%
+    separate(trip1, into = c("ring_1", "season_1", "loc", "tripID_1", "sex1"), sep = "_") %>%
+    separate(trip2, into = c("ring_2", "season_2", "loc", "tripID_2", "sex2"), sep = "_") %>%
+    select(-c(loc, sex1, sex2)) %>%
     mutate(tripID_1 = paste0("trip_", tripID_1),
            tripID_2 = paste0("trip_", tripID_2),
            comp_ind = "between_ring",
